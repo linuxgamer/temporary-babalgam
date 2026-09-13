@@ -16,7 +16,6 @@
 #include "../Features/Visuals/Materials/Materials.h"
 #include "../Features/Visuals/FakePOV/FakePOV.h"
 #include "../Features/DiscordRPC/DiscordRPC.h"
-#include "../Features/Debug/Debug.h"
 
 MAKE_HOOK(IEngineVGui_Paint, U::Memory.GetVirtual(I::EngineVGui, 14), void,
 	void* rcx, int iMode)
