@@ -1153,7 +1153,7 @@
     <ClCompile Include="src\Features\NavBot\NavEngine\NavEngine.cpp" />
     <ClCompile Include="src\Features\NavBot\NavEngine\Map.cpp" />
     <ClCompile Include="src\Features\NavBot\NavEngine\PathWorker.cpp" />
-    <ClCompile Include="src\Features\Debug\Debug.cpp" />
+    <!-- <ClCompile Include="src\Features\Debug\Debug.cpp" /> -->
     <ClCompile Include="src\Features\Output\Output.cpp" />
     <ClCompile Include="src\Features\Misc\AutoQueue\AutoQueue.cpp" />
     <ClCompile Include="src\Features\Backtrack\Backtrack.cpp" />
