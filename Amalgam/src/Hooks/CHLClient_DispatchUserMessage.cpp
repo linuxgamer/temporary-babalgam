@@ -1,0 +1,186 @@
+#include "../SDK/SDK.h"
+
+#include "../Features/Misc/Misc.h"
+#include "../Features/Output/Output.h"
+#include "../Features/NoSpread/NoSpreadHitscan/NoSpreadHitscan.h"
+#include "../Features/Misc/AutoVote/AutoVote.h"
+#include "../Features/Aimbot/AutoHeal/AutoHeal.h"
+
+//#define DEBUG_VISUALS
+#ifdef DEBUG_VISUALS
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/classification.hpp>
+#endif
+
+MAKE_HOOK(CHLClient_DispatchUserMessage, U::Memory.GetVirtual(I::Client, 36), bool,
+	void* rcx, UserMessageType type, bf_read& msgData)
+{
+	DEBUG_RETURN(CHLClient_DispatchUserMessage, rcx, type, msgData);
+
+	auto bufData = reinterpret_cast<const char*>(msgData.m_pData);
+	msgData.SetAssertOnOverflow(false);
+	msgData.Reset();
+
+	switch (type)
+	{
+	case VotePass:
+	case VoteFailed:
+		if (Vars::Misc::Automation::AutoVote.Value & Vars::Misc::Automation::AutoVoteEnum::Defend ||
+			Vars::Misc::Automation::AutoVote.Value & Vars::Misc::Automation::AutoVoteEnum::Assist)
+		{
+			msgData.SeekRelative(4);
+			F::AutoVote.OnVoteEnd(msgData.ReadLong());
+			msgData.Reset();
+		}
+		break;
+	case CallVoteFailed:
+	{
+		if (Vars::Misc::Automation::AutoVote.Value & Vars::Misc::Automation::AutoVoteEnum::Kick)
+		{
+			int nReason = msgData.ReadByte();
+			if (nReason == VOTE_FAILED_ON_COOLDOWN ||
+				nReason == VOTE_FAILED_RATE_EXCEEDED)
+				F::AutoVote.OnCallVoteFail(msgData.ReadShort());
+			msgData.Reset();
+		}
+		break;
+	}
+	case VoteStart:
+	{
+		int iTeam = msgData.ReadByte();
+		int iVoteID = msgData.ReadLong();
+		int iCaller = msgData.ReadByte();
+		char sReason[256]; msgData.ReadString(sReason, sizeof(sReason));
+		char sTarget[256]; msgData.ReadString(sTarget, sizeof(sTarget));
+		int iTarget = msgData.ReadByte() >> 1;
+		msgData.Reset();
+
+		F::Output.UserMessage(msgData);
+		if (std::string(sReason).find("kick") != std::string::npos)
+		{
+			F::AutoVote.OnVoteStart(iTeam, iVoteID, iCaller, iTarget);
+			F::Misc.OnVoteStart(iCaller, iTarget, sTarget);
+		}
+		break;
+	}
+	case VoiceSubtitle:
+	{
+		int iEntityID = msgData.ReadByte();
+		int iVoiceMenu = msgData.ReadByte();
+		int iCommandID = msgData.ReadByte();
+		if (iVoiceMenu == 1 && iCommandID == 6)
+			F::AutoHeal.m_mMedicCallers[iEntityID];
+
+		break;
+	}
+	case SayText2:
+	{
+		int iEntityID = msgData.ReadByte();
+		msgData.ReadByte();
+		char sMsgName[256]; msgData.ReadString(sMsgName, sizeof(sMsgName));
+		char sName[256]; msgData.ReadString(sName, sizeof(sName));
+		char sMsg[256]; msgData.ReadString(sMsg, sizeof(sMsg));
+
+		F::Misc.OnChatMessage(iEntityID, sName, sMsg);
+		break;
+	}
+	case TextMsg:
+	{
+		char rawMsg[256]; msgData.ReadString(rawMsg, sizeof(rawMsg), true);
+		msgData.Reset();
+		std::string sMsg = rawMsg;
+		if (!sMsg.empty())
+		{
+			sMsg.erase(sMsg.begin());
+
+			if (F::NoSpreadHitscan.ParsePlayerPerf(sMsg))
+				return true;
+
+#ifdef DEBUG_VISUALS
+			if (sMsg.find("[Box] ") == 0)
+			{
+				try
+				{
+					sMsg.replace(0, strlen("[Box] "), "");
+					std::vector<std::string> vValues = {};
+					boost::split(vValues, sMsg, boost::is_any_of(" "));
+					if (vValues.size() != 17)
+						return true;
+
+					Vec3 vOrigin = { std::stof(vValues[0]), std::stof(vValues[1]), std::stof(vValues[2]) };
+					Vec3 vMins = { std::stof(vValues[3]), std::stof(vValues[4]), std::stof(vValues[5]) };
+					Vec3 vMaxs = { std::stof(vValues[6]), std::stof(vValues[7]), std::stof(vValues[8]) };
+					Vec3 vAngles = { std::stof(vValues[9]), std::stof(vValues[10]), std::stof(vValues[11]) };
+					Color_t tColor = { byte(std::stoi(vValues[12])), byte(std::stoi(vValues[13])), byte(std::stoi(vValues[14])), byte(255 - std::stoi(vValues[15])) };
+					float flDuration = std::stof(vValues[16]);
+
+					G::BoxStorage.emplace_back(vOrigin, vMins, vMaxs, vAngles, I::GlobalVars->curtime + flDuration, tColor, Color_t(0, 0, 0, 0), true);
+				}
+				catch (...) {}
+
+				return true;
+			}
+			if (sMsg.find("[Line] ") == 0)
+			{
+				try
+				{
+					sMsg.replace(0, strlen("[Line] "), "");
+					std::vector<std::string> vValues = {};
+					boost::split(vValues, sMsg, boost::is_any_of(" "));
+					if (vValues.size() != 11)
+						return true;
+
+					Vec3 vStart = { std::stof(vValues[0]), std::stof(vValues[1]), std::stof(vValues[2]) };
+					Vec3 vEnd = { std::stof(vValues[3]), std::stof(vValues[4]), std::stof(vValues[5]) };
+					Color_t tColor = { byte(std::stoi(vValues[6])), byte(std::stoi(vValues[7])), byte(std::stoi(vValues[8])), byte(255 - std::stoi(vValues[9])) };
+					float flDuration = std::stof(vValues[10]);
+
+					G::LineStorage.emplace_back(std::pair<Vec3, Vec3>(vStart, vEnd), I::GlobalVars->curtime + flDuration, tColor, true);
+				}
+				catch (...) {}
+
+				return true;
+			}
+#endif
+
+			if (FNV1A::Hash32(sMsg.c_str()) == FNV1A::Hash32Const("#TF_Autobalance_TeamChangePending"))
+			{
+				if (Vars::Misc::Automation::AntiAutobalance.Value)
+				{
+					F::Misc.SetAutoBalanceTeamChangePending(true);
+					I::EngineClient->ClientCmd_Unrestricted("retry");
+				}
+			}
+			else if (FNV1A::Hash32(sMsg.c_str()) == FNV1A::Hash32Const("#GameUI_vote_failed_vote_in_progress"))
+				F::AutoVote.m_bActiveVote = true;
+			else if (sMsg.find("change class") != std::string::npos && sMsg.find("wave") != std::string::npos)
+				F::Misc.OnBuyBotClassChangeBlocked();
+			else if (sMsg.find("Change_Class") != std::string::npos && sMsg.find("Wave") != std::string::npos)
+				F::Misc.OnBuyBotClassChangeBlocked();
+		}
+		break;
+	}
+	case VGUIMenu:
+		if (Vars::Visuals::Removals::MOTD.Value && bufData
+			&& FNV1A::Hash32(bufData) == FNV1A::Hash32Const("info"))
+		{
+			I::EngineClient->ClientCmd_Unrestricted("closedwelcomemenu");
+			return true;
+		}
+		break;
+	case ForcePlayerViewAngles:
+		return Vars::Visuals::Removals::AngleForcing.Value ? true : CALL_ORIGINAL(rcx, type, msgData);
+	case SpawnFlyingBird:
+	case PlayerGodRayEffect:
+	case PlayerTauntSoundLoopStart:
+	case PlayerTauntSoundLoopEnd:
+		return Vars::Visuals::Removals::Taunts.Value ? true : CALL_ORIGINAL(rcx, type, msgData);
+	case Shake:
+	case Fade:
+	case Rumble:
+		return Vars::Visuals::Removals::ScreenEffects.Value ? true : CALL_ORIGINAL(rcx, type, msgData);
+	}
+
+	msgData.Reset();
+	return CALL_ORIGINAL(rcx, type, msgData);
+}

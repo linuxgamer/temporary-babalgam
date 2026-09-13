@@ -1,0 +1,47 @@
+#pragma once
+#include "../../../SDK/SDK.h"
+
+Enum(Model, Visible, Occluded);
+
+class CChams
+{
+private:
+	void Begin();
+	void End();
+
+	void DrawModel(CBaseEntity* pEntity, const Chams_t& tChams, IMatRenderContext* pRenderContext, int iModel = ModelEnum::Visible, bool bTwoModel = false);
+
+	void RenderBacktrack(IVModelRender* pModelRender, const DrawModelState_t& pState, const ModelRenderInfo_t& pInfo);
+	void RenderFakeAngle(IVModelRender* pModelRender, const DrawModelState_t& pState, const ModelRenderInfo_t& pInfo);
+
+	struct ChamsInfo_t
+	{
+		CBaseEntity* m_pEntity;
+		Chams_t* m_pChams;
+		float m_flDistance;
+		int m_iFlags = 0;
+	};
+	std::vector<ChamsInfo_t> m_vEntities = {};
+
+	Color_t m_tOriginalColor = {};
+	float m_flOriginalBlend = 1.f;
+	IMaterial* m_pOriginalMaterial = nullptr;
+	OverrideType_t m_iOriginalOverride = OVERRIDE_NORMAL;
+	float m_flCurrentDistance = -1.f;
+
+	int m_iFlags = false;
+
+public:
+	void Store(CTFPlayer* pLocal);
+	void RenderMain();
+	void RenderHandler(IVModelRender* pModelRender, const DrawModelState_t& pState, const ModelRenderInfo_t& pInfo, matrix3x4* pBoneToWorld);
+
+	bool RenderViewmodel(CBaseAnimating* rcx, int flags, int* iReturn);
+	bool RenderViewmodel(IVModelRender* pModelRender, const DrawModelState_t& pState, const ModelRenderInfo_t& pInfo, matrix3x4* pBoneToWorld);
+
+	bool m_bRendering = false;
+
+	std::unordered_mapset<int> m_mEntities = {};
+};
+
+ADD_FEATURE(CChams, Chams);
