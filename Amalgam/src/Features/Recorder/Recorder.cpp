@@ -506,8 +506,8 @@ void CRecorder::Draw()
 	const int iLineH = std::max(int(H::Draw.GetTextSize("0", tFont).y), int(H::Draw.Scale(11)));
 	const int iPad = int(H::Draw.Scale(8));
 	const int iGap = int(H::Draw.Scale(6));
-	const int iW = int(H::Draw.Scale(160));
-	const int iH = iPad * 2 + iLineH * 2 + iGap * 2 + 1; // pad + title + separator + value + pad
+	const int iW = int(H::Draw.Scale(120));
+	const int iH = iPad * 2 + iLineH * 2 + iGap; // pad + title + gap + value + pad
 
 	// DragBox stores centre-x / top-y (see CMenu::AddDraggable); centre the fixed-width box on it.
 	// Never positioned (0,0) -> default to the upper centre instead of half off the left edge.
@@ -529,17 +529,7 @@ void CRecorder::Draw()
 
 	int iY = iTop + iPad;
 	H::Draw.String(tFont, iCX, iY, tCol, ALIGN_TOP, sTitle.c_str());
-	iY += iLineH;
-
-	// Faded separator: transparent edges -> accent centre.
-	iY += iGap;
-	const int iLineW = iW - iPad * 2;
-	const int iHalfW = iLineW / 2;
-	const Color_t tEdge = { 0, 0, 0, 0 };
-	const Color_t tAccent = Vars::Menu::Theme::Accent.Value;
-	H::Draw.GradientRect(iLeft + iPad, iY, iHalfW, 1, tEdge, tAccent, true);
-	H::Draw.GradientRect(iLeft + iPad + iHalfW, iY, iLineW - iHalfW, 1, tAccent, tEdge, true);
-	iY += 1 + iGap;
+	iY += iLineH + iGap;
 	H::Draw.String(tFont, iCX, iY, tCol, ALIGN_TOP, sValue.c_str());
 }
 
