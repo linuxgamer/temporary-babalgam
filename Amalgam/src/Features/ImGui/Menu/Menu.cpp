@@ -1833,6 +1833,16 @@ void CMenu::MenuMisc(int iTab)
 				} EndSection();
 				if (Vars::Misc::Movement::MovementRecorder.Value)
 				{
+					if (Section("Binds", 8)) // bind these to keys (Config > BINDS)
+					{
+						FToggle(Vars::Misc::Movement::MovementRecorderRecord, FToggleEnum::Left);
+						FToggle(Vars::Misc::Movement::MovementRecorderPlay, FToggleEnum::Right);
+						FToggle(Vars::Misc::Movement::MovementRecorderStop, FToggleEnum::Left);
+						FToggle(Vars::Misc::Movement::MovementRecorderClear, FToggleEnum::Right);
+						FToggle(Vars::Misc::Movement::MovementRecorderSave, FToggleEnum::Left);
+						FToggle(Vars::Misc::Movement::MovementRecorderLoad, FToggleEnum::Right);
+						FToggle(Vars::Misc::Movement::MovementRecorderShadowSave, FToggleEnum::Left);
+					} EndSection();
 					if (Section("##Recorder Routes"))
 					{
 						FText(std::format("{}", F::Recorder.RecorderIsRecording()
