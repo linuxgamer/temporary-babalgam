@@ -2,6 +2,7 @@
 #include "../../../BytePatches/BytePatches.h"
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/classification.hpp>
+#include <optional>
 
 MAKE_SIGNATURE(CStorePage_DoPreviewItem, "client.dll", "40 53 48 81 EC ? ? ? ? 0F B7 DA", 0x0);
 MAKE_SIGNATURE(CCraftingPanel_Craft, "client.dll", "48 89 5C 24 ? 48 89 74 24 ? 48 89 7C 24 ? 55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC ? FF 81", 0x0);
@@ -9,6 +10,27 @@ MAKE_SIGNATURE(CCraftingPanel_Craft, "client.dll", "48 89 5C 24 ? 48 89 74 24 ? 
 constexpr std::array<item_definition_index_t, 12> kPreferredNoisemakerDefs{
 	280, 281, 282, 283, 284, 286, 288, 362, 364, 365, 493, 542
 };
+
+namespace
+{
+	std::optional<int> TryParseDefIdx(const std::string& sValue, const char* szContext)
+	{
+		try
+		{
+			return std::stoi(sValue);
+		}
+		catch (const std::invalid_argument&)
+		{
+			SDK::Output("CAutoItem", std::format("invalid_argument error {}.", szContext).c_str(), { 255, 131, 131 }, OUTPUT_CONSOLE | OUTPUT_DEBUG);
+			return std::nullopt;
+		}
+		catch (const std::out_of_range&)
+		{
+			SDK::Output("CAutoItem", std::format("out_of_range error {}.", szContext).c_str(), { 255, 131, 131 }, OUTPUT_CONSOLE | OUTPUT_DEBUG);
+			return std::nullopt;
+		}
+	}
+}
 
 bool CAutoItem::Craft(CTFPlayerInventory* pLocalInventory, std::vector<item_definition_index_t> vItemDefs)
 {
@@ -71,6 +93,34 @@ void CAutoItem::Rent(item_definition_index_t iItemDef)
 	S::CStorePage_DoPreviewItem.Call<void>(nullptr, iItemDef);
 }
 
+void CAutoItem::EquipWeapon(CTFInventoryManager* pInventoryManager, CTFPlayerInventory* pLocalInventory, int iClass, int iSlot, item_definition_index_t iItemDef)
+{
+	EquipItem(pInventoryManager, pLocalInventory, iClass, iSlot, iItemDef, true, true);
+}
+
+void CAutoItem::MvmRent()
+{
+	constexpr item_definition_index_t iVaccinator = 998;
+	constexpr item_definition_index_t iHeatmaker = 752;
+
+	auto pInventoryManager = I::TFInventoryManager();
+	if (!pInventoryManager)
+	{
+		SDK::Output("cat_mvm_rent", "Inventory manager unavailable", { 255, 131, 131 }, OUTPUT_CONSOLE | OUTPUT_DEBUG);
+		return;
+	}
+
+	auto pLocalInventory = pInventoryManager->GetLocalInventory();
+	if (!pLocalInventory)
+	{
+		SDK::Output("cat_mvm_rent", "Local inventory unavailable", { 255, 131, 131 }, OUTPUT_CONSOLE | OUTPUT_DEBUG);
+		return;
+	}
+
+	EquipItem(pInventoryManager, pLocalInventory, TF_CLASS_MEDIC, SLOT_SECONDARY, iVaccinator, true, true);
+	EquipItem(pInventoryManager, pLocalInventory, TF_CLASS_SNIPER, SLOT_PRIMARY, iHeatmaker, true, true);
+}
+
 item_definition_index_t CAutoItem::SelectNoisemaker(CTFPlayerInventory* pLocalInventory)
 {
 	for (auto iItemDef : kPreferredNoisemakerDefs)
@@ -126,23 +176,25 @@ void CAutoItem::GetAndEquipWeapon(CTFInventoryManager* pInventoryManager, CTFPla
 	{
 		std::vector<std::string> vSplitStrDefIdx;
 		std::vector<item_definition_index_t> vSplitDefIdx;
-		try
+		if (sItemDefs.find('/') != std::string::npos)
 		{
-			if (sItemDefs.find('/') != std::string::npos)
+			boost::split(vSplitStrDefIdx, sItemDefs, boost::is_any_of("/"));
+			for (auto& sDefIdx : vSplitStrDefIdx)
 			{
-				boost::split(vSplitStrDefIdx, sItemDefs, boost::is_any_of("/"));
-				for (auto sDefIdx : vSplitStrDefIdx)
-					vSplitDefIdx.emplace_back(std::stoi(sDefIdx));
-
-				bFallback = true;
+				auto oDefIdx = TryParseDefIdx(sDefIdx, "making vSplitDefIdx vector");
+				if (!oDefIdx)
+					return;
+				vSplitDefIdx.emplace_back(static_cast<item_definition_index_t>(*oDefIdx));
 			}
-			else
-				vSplitDefIdx.emplace_back(std::stoi(sItemDefs));
+
+			bFallback = true;
 		}
-		catch (const std::invalid_argument&)
+		else
 		{
-			SDK::Output("CAutoItem", "invalid_argument error making vSplitDefIdx vector.", { 255, 131, 131 }, OUTPUT_CONSOLE | OUTPUT_DEBUG);
-			return;
+			auto oDefIdx = TryParseDefIdx(sItemDefs, "making vSplitDefIdx vector");
+			if (!oDefIdx)
+				return;
+			vSplitDefIdx.emplace_back(static_cast<item_definition_index_t>(*oDefIdx));
 		}
 
 		auto pItem = pLocalInventory->GetFirstItemOfItemDef(vSplitDefIdx.at(0));
@@ -168,15 +220,10 @@ void CAutoItem::GetAndEquipWeapon(CTFInventoryManager* pInventoryManager, CTFPla
 		size_t loc = sItemDefs.find('-');
 		if (loc != std::string::npos)
 		{
-			try
-			{
-				iResultDefIndex = std::stoi(sItemDefs.substr(loc + 1, sItemDefs.length()));
-			}
-			catch (const std::invalid_argument&)
-			{
-				SDK::Output("CAutoItem", "invalid_argument error making result integer.", { 255, 131, 131 }, OUTPUT_CONSOLE | OUTPUT_DEBUG);
+			auto oResultDefIndex = TryParseDefIdx(sItemDefs.substr(loc + 1, sItemDefs.length()), "making result integer");
+			if (!oResultDefIndex)
 				return;
-			}
+			iResultDefIndex = *oResultDefIndex;
 
 			auto pItem = pLocalInventory->GetFirstItemOfItemDef(iResultDefIndex);
 			if (pItem)
@@ -201,17 +248,14 @@ void CAutoItem::GetAndEquipWeapon(CTFInventoryManager* pInventoryManager, CTFPla
 				// Split this crafting group into IDs
 				boost::split(vStrDefIndexes, sGroup, boost::is_any_of(","));
 
-				try
-				{
-					// Convert to ints
-					for (auto sDefIdx : vStrDefIndexes)
-						vDefIndexes.emplace_back(std::stoi(sDefIdx));
-				}
-				catch (const std::invalid_argument&)
-				{
-					SDK::Output("CAutoItem", "invalid_argument error making vDefIndexes vector.", { 255, 131, 131 }, OUTPUT_CONSOLE | OUTPUT_DEBUG);
+			// Convert to ints
+			for (auto& sDefIdx : vStrDefIndexes)
+			{
+				auto oDefIdx = TryParseDefIdx(sDefIdx, "making vDefIndexes vector");
+				if (!oDefIdx)
 					return;
-				}
+				vDefIndexes.emplace_back(static_cast<item_definition_index_t>(*oDefIdx));
+			}
 
 				// See if we have the requirements to perform this craft, if not try to get them.
 				size_t uAmountAvailableRequirements = 0;

@@ -12,10 +12,12 @@
 #include "../Features/PacketManip/AntiAim/AntiAim.h"
 #include "../Features/NavBot/NavBotCore.h"
 #include "../Features/Misc/AutoQueue/AutoQueue.h"
-#include "../Features/Misc/Misc.h"
+#include "../Features/Recorder/Recorder.h"
+#if __has_include("../Features/Misc/ProfileStalker/ProfileStalker.h")
+#include "../Features/Misc/ProfileStalker/ProfileStalker.h"
+#endif
 #include "../Features/Visuals/Materials/Materials.h"
-#include "../Features/Visuals/FakePOV/FakePOV.h"
-#include "../Features/DiscordRPC/DiscordRPC.h"
+#include "../Features/Debug/Debug.h"
 
 MAKE_HOOK(IEngineVGui_Paint, U::Memory.GetVirtual(I::EngineVGui, 14), void,
 	void* rcx, int iMode)
@@ -26,6 +28,9 @@ MAKE_HOOK(IEngineVGui_Paint, U::Memory.GetVirtual(I::EngineVGui, 14), void,
 		return CALL_ORIGINAL(rcx, iMode);
 
 	F::AutoQueue.Run();
+#if __has_include("../Features/Misc/ProfileStalker/ProfileStalker.h")
+	F::ProfileStalker.Run();
+#endif
 
 	if (iMode & PAINT_UIPANELS)
 	{
@@ -53,11 +58,8 @@ MAKE_HOOK(IEngineVGui_Paint, U::Memory.GetVirtual(I::EngineVGui, 14), void,
 
 			F::NavBotCore.DrawDangerOverlay(pLocal);
 
-			// movement suite world overlay (pixel finder points, surf lines, assist targets) -
-			// surface-drawn, so it must live inside Start/End here, not in the Present hook
-			F::Misc.DrawPixelSurf(pLocal);
-
-			F::FakePOV.Draw(pLocal);
+			F::Recorder.Draw();
+			F::Recorder.DrawRoutes(pLocal);
 
 #ifdef DEBUG_INFO
 			F::Debug.Draw(pLocal);
@@ -65,22 +67,6 @@ MAKE_HOOK(IEngineVGui_Paint, U::Memory.GetVirtual(I::EngineVGui, 14), void,
 		}
 		H::Draw.End();
 	}
-
-	// discord rpc ticks from any paint pass, throttled internally
-	if (Vars::Misc::Game::DiscordRPC.Value)
-	{
-		if (!F::DiscordRPC.IsInitialized())
-		{
-			player_info_t tInfo = {};
-			if (I::EngineClient->GetPlayerInfo(I::EngineClient->GetLocalPlayer(), &tInfo) && tInfo.name && *tInfo.name)
-				G::g_Username = tInfo.name;
-			F::DiscordRPC.Initialize();
-		}
-		else
-			F::DiscordRPC.Update();
-	}
-	else if (F::DiscordRPC.IsInitialized())
-		F::DiscordRPC.Shutdown();
 
 	CALL_ORIGINAL(rcx, iMode);
 }

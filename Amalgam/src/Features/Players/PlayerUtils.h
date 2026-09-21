@@ -1,6 +1,5 @@
 #pragma once
 #include "../../SDK/SDK.h"
-#include <atomic>
 #include <shared_mutex>
 
 #define DEFAULT_TAG 0
@@ -93,7 +92,6 @@ public:
 	bool m_bSave = false;
 	bool m_bCheaterLoad = true;
 	bool m_bCheaterSave = false;
-	std::atomic<uint64_t> m_uCheaterRevision = { 0 }; // bumped whenever cheater records change
 
 	mutable std::shared_mutex m_tMutex;
 private:

@@ -5,8 +5,7 @@
 #include "../Features/Visuals/CameraWindow/CameraWindow.h"
 #include "../Features/Visuals/Visuals.h"
 #include "../Features/Visuals/Materials/Materials.h"
-#include "../Features/Visuals/FlipWorld/FlipWorld.h"
-#include "../Features/Navbot/NavEngine/NavEngine.h"
+#include "../Features/NavBot/NavEngine.h"
 #include "../Features/FollowBot/FollowBot.h"
 #include "../Features/Spectate/Spectate.h"
 
@@ -32,7 +31,6 @@ MAKE_HOOK(CClientModeShared_DoPostScreenSpaceEffects, U::Memory.GetVirtual(I::Cl
 	F::FollowBot.Render();
 	F::Visuals.Triggers(pLocal);
 	F::Visuals.DrawEffects();
-	F::FlipWorld.Render(pSetup);
 	if (I::EngineVGui->IsGameUIVisible() || !F::Materials.m_bLoaded)
 		return CALL_ORIGINAL(rcx, pSetup);
 

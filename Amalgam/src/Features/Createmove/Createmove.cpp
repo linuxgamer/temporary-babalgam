@@ -12,13 +12,11 @@
 #include "../Ticks/Ticks.h"
 #include "../Visuals/Visuals.h"
 #include "../Visuals/FakeAngle/FakeAngle.h"
-#include "../Visuals/SkinChanger/SkinChanger.h"
-#include "../Visuals/FakePOV/FakePOV.h"
 #include "../Spectate/Spectate.h"
 #include "../AntiCheatCompatibility/AntiCheatCompatibility.h"
-#include "../NavBot/NavEngine/Controllers/Controller.h"
+#include "../NavBot/Objectives.h"
 #include "../NavBot/NavBotCore.h"
-#include "../NavBot/NavEngine/NavEngine.h"
+#include "../NavBot/NavEngine.h"
 #include "../FollowBot/FollowBot.h"
 #include "../AutoJoin/AutoJoin.h"
 #include "../Misc/AutoItem/AutoItem.h"
@@ -66,16 +64,6 @@ void CCreateMove::Run(int nSequenceNum, float flInputSampleFrametime)
 
 	auto pWeapon = H::Entities.GetWeapon();
 	CUserCmd* pCmd = &I::Input->m_pCommands[nSequenceNum % MULTIPLAYER_BACKUP];
-
-	if (pLocal->IsAlive())
-		F::FakePOV.CreateMove(pLocal); // fake pov snap view state machine, input thread
-
-#ifndef TEXTMODE
-	// reselect the weapon for one tick when the skinchanger swapped its item, so the
-	// game's own deploy path rebuilds the viewmodel (model, arms, animations) natively
-	if (const int nRedeploy = F::SkinChanger.ConsumeRedeploy())
-		pCmd->weaponselect = nRedeploy;
-#endif
 	I::Prediction->Update(I::ClientState->m_nDeltaTick, I::ClientState->m_nDeltaTick > 0, I::ClientState->last_command_ack, I::ClientState->lastoutgoingcommand + I::ClientState->chokedcommands);
 
 	UpdateInfo(pLocal, pWeapon, pCmd);
@@ -102,6 +90,7 @@ void CCreateMove::Run(int nSequenceNum, float flInputSampleFrametime)
 		F::NavEngine.Run(pLocal, pWeapon, pCmd);
 		F::BotUtils.HandleSmartJump(pLocal, pCmd);
 		F::CritHack.Run(pLocal, pWeapon, pCmd);
+		F::CritHack.CacheDrawInfo(pLocal);
 		F::NoSpread.Run(pLocal, pWeapon, pCmd);
 		F::Misc.RunPost(pLocal, pCmd);
 		F::Misc.AutoFaNJump(pLocal, pWeapon, pCmd);
@@ -109,17 +98,6 @@ void CCreateMove::Run(int nSequenceNum, float flInputSampleFrametime)
 		F::Ticks.CreateMove(pLocal, pWeapon, pCmd);
 		F::AntiAim.Run(pLocal, pWeapon, pCmd);
 		F::AntiCheatCompatibility.CreateMove(pCmd);
-
-		// texture-bug choke must run after packet manip and ticks so the held packet survives
-		if (I::ClientState->chokedcommands < 14 && F::Misc.ConsumeTextureBugChoke())
-			G::SendPacket = false;
-
-		// zoom-locked rifles physically cannot fire unscoped or on cooldown: strip attack at the very end
-		// of the pipeline no matter which feature set it (aimbot press, acc re-press, crit command rewrites),
-		// so the rifle can never dry-fire during rezoom or manual unscopes
-		if (pWeapon && SDK::AttribHookValue(0, "sniper_only_fire_zoomed", pWeapon)
-			&& (!pLocal->InCond(TF_COND_ZOOMED) || pCmd->buttons & IN_ATTACK2 || !pWeapon->CanPrimaryAttack()))
-			pCmd->buttons &= ~IN_ATTACK;
 		
 #ifndef TEXTMODE
 		F::Visuals.CreateMove(pLocal, pWeapon, pCmd);

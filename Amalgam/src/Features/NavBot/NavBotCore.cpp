@@ -1,11 +1,9 @@
 #include "NavBotCore.h"
-
-#include "Hazards/Hazards.h"
-#include "NavAreaUtils.h"
-#include "NavEngine/NavEngine.h"
-#include "NavBotJobs/NavBotJobs.h"
-#include "NavRuntime.h"
-#include "NavEngine/Controllers/MVMController/MVMController.h"
+#include "Hazards.h"
+#include "Jobs/NavBotJobs.h"
+#include "NavEngine.h"
+#include "BotUtils.h"
+#include "Objectives.h"
 #include "../FollowBot/FollowBot.h"
 #include "../CritHack/CritHack.h"
 #include "../Misc/Misc.h"
@@ -13,14 +11,12 @@
 #include "../Ticks/Ticks.h"
 #include "../ImGui/IndicatorPanel.h"
 
-
 void CNavBotCore::UpdateSlot(CTFPlayer* pLocal, ClosestEnemy_t tClosestEnemy)
 {
 	static Timer tSlotTimer{};
 	if (!tSlotTimer.Run(0.2f))
 		return;
 
-	// Prioritize reloading
 	int iReloadSlot = F::NavBotReload.m_iLastReloadSlot = F::NavBotReload.GetReloadWeaponSlot(pLocal, tClosestEnemy);
 
 	if (F::NavBotEngineer.IsEngieMode(pLocal))
@@ -28,21 +24,22 @@ void CNavBotCore::UpdateSlot(CTFPlayer* pLocal, ClosestEnemy_t tClosestEnemy)
 		int iSwitch = 0;
 		switch (F::NavBotEngineer.m_eTaskStage)
 		{
-			// We are currently building something
+
 		case EngineerTaskStageEnum::BuildSentry:
 		case EngineerTaskStageEnum::BuildDispenser:
 			if (F::NavBotEngineer.m_tCurrentBuildingSpot.m_flCost != FLT_MAX && F::NavBotEngineer.m_tCurrentBuildingSpot.m_vPos.DistTo(pLocal->GetAbsOrigin()) <= 500.f)
 			{
 				if (pLocal->m_bCarryingObject())
 				{
-					auto pWeapon = pLocal->m_hActiveWeapon().Get()->As<CTFWeaponBase>();
+					auto pWeaponEntity = pLocal->m_hActiveWeapon().Get();
+					auto pWeapon = pWeaponEntity ? pWeaponEntity->As<CTFWeaponBase>() : nullptr;
 					if (pWeapon && pWeapon->GetSlot() != 3)
 						F::BotUtils.SetSlot(pLocal, SLOT_PRIMARY);
 				}
 				return;
 			}
 			break;
-			// We are currently upgrading/repairing something
+
 		case EngineerTaskStageEnum::SmackSentry:
 			iSwitch = F::NavBotEngineer.m_flDistToSentry <= 300.f;
 			break;
@@ -89,6 +86,7 @@ void CNavBotCore::ResetRuntimeState(CUserCmd* pCmd)
 {
 	F::NavBotStayNear.m_iStayNearTargetIdx = -1;
 	F::NavBotReload.m_iLastReloadSlot = -1;
+	F::CritHack.m_bForce = false;
 	m_tIdleTimer.Update();
 	m_tAntiStuckTimer.Update();
 	UpdateRunReloadInput(pCmd, false);
@@ -109,7 +107,7 @@ static bool IsWeaponValidForDT(CTFWeaponBase* pWeapon)
 void CNavBotCore::Run(CTFPlayer* pLocal, CTFWeaponBase* pWeapon, CUserCmd* pCmd)
 {
 	if (!Vars::Misc::Movement::NavBot::Enabled.Value || !Vars::Misc::Movement::NavEngine::Enabled.Value ||
-		!pLocal->IsAlive() || F::NavEngine.m_eCurrentPriority == PriorityListEnum::Followbot || F::FollowBot.m_bActive || !F::NavEngine.IsReady())
+		!pLocal || !pCmd || !pLocal->IsAlive() || F::NavEngine.m_eCurrentPriority == PriorityListEnum::Followbot || F::FollowBot.m_bActive || !F::NavEngine.IsReady())
 	{
 		ResetRuntimeState(pCmd);
 		return;
@@ -175,16 +173,32 @@ void CNavBotCore::Run(CTFPlayer* pLocal, CTFWeaponBase* pWeapon, CUserCmd* pCmd)
 		return;
 	}
 
-	// Update our current nav area
 	if (!F::NavEngine.GetLocalNavArea(pLocal->GetAbsOrigin()))
 	{
-		// This should never happen.
-		// In case it did then theres something wrong with nav engine
+
 		ResetRuntimeState(pCmd);
 		return;
 	}
 
-	// Recharge doubletap every n seconds
+	auto pGameRules = I::TFGameRules();
+	if ((Vars::Misc::Movement::NavBot::Preferences.Value & Vars::Misc::Movement::NavBot::PreferencesEnum::MVMSniper) && pGameRules && pGameRules->m_bPlayingMannVsMachine())
+	{
+
+		if (F::Misc.IsBuyBotBusy())
+			return;
+
+		if (pLocal->m_iClass() == TF_CLASS_SNIPER)
+		{
+			if (F::NavBotMVMSniper.Run(pCmd, pLocal))
+			{
+				m_tIdleTimer.Update();
+				m_tAntiStuckTimer.Update();
+			}
+			UpdateRunReloadInput(pCmd, false);
+			return;
+		}
+	}
+
 	static Timer tDoubletapRecharge{};
 	if (Vars::Misc::Movement::NavBot::RechargeDT.Value && IsWeaponValidForDT(pWeapon))
 	{
@@ -197,14 +211,13 @@ void CNavBotCore::Run(CTFPlayer* pLocal, CTFWeaponBase* pWeapon, CUserCmd* pCmd)
 			tDoubletapRecharge.Update();
 	}
 
-	// Not used
-	// RefreshSniperSpots();
 	m_tJobSystem.RefreshSharedState(pLocal);
 
 	m_tSelectedConfig = NavBotConfig::Select(pLocal, pWeapon);
 
 	UpdateSlot(pLocal, F::BotUtils.m_tClosestEnemy);
 	F::Hazards.Update(pLocal);
+	F::CritHack.m_bForce = false;
 
 	if (F::MVMController.IsActive() && F::MVMController.Run(pCmd, pLocal, pWeapon))
 	{
@@ -225,40 +238,32 @@ void CNavBotCore::Run(CTFPlayer* pLocal, CTFWeaponBase* pWeapon, CUserCmd* pCmd)
 
 	if (tJobResult.m_bHasJob)
 	{
-		bool bIsPathing = F::NavEngine.IsPathing();
-		if (!bIsPathing)
-		{
-			// If we have a job but no path, we consider it idle (stuck or waiting for gods agreement to move lol)
-		}
-		else
+		if (F::NavEngine.IsPathing())
 		{
 			m_tIdleTimer.Update();
 			m_tAntiStuckTimer.Update();
 		}
 
-		// Force crithack in dangerous conditions
-		// TODO:
-		// Maybe add some logic to it (more logic)
 		CTFPlayer* pPlayer = nullptr;
 		switch (F::NavEngine.m_eCurrentPriority)
 		{
 		case PriorityListEnum::StayNear:
-			pPlayer = I::ClientEntityList->GetClientEntity(F::NavBotStayNear.m_iStayNearTargetIdx)->As<CTFPlayer>();
+			if (auto pEntity = I::ClientEntityList->GetClientEntity(F::NavBotStayNear.m_iStayNearTargetIdx))
+				pPlayer = pEntity->As<CTFPlayer>();
 			if (pPlayer)
 				F::CritHack.m_bForce = !pPlayer->IsDormant() && pPlayer->m_iHealth() >= pWeapon->GetDamage();
 			break;
 		case PriorityListEnum::MeleeAttack:
 		case PriorityListEnum::GetHealth:
 		case PriorityListEnum::EscapeDanger:
-			pPlayer = I::ClientEntityList->GetClientEntity(F::BotUtils.m_tClosestEnemy.m_iEntIdx)->As<CTFPlayer>();
+			if (auto pEntity = I::ClientEntityList->GetClientEntity(F::BotUtils.m_tClosestEnemy.m_iEntIdx))
+				pPlayer = pEntity->As<CTFPlayer>();
 			F::CritHack.m_bForce = pPlayer && !pPlayer->IsDormant() && pPlayer->m_iHealth() >= pWeapon->GetDamage();
 			break;
-		default:
-			F::CritHack.m_bForce = false;
-			break;
+		default: break;
 		}
 	}
-	else if (F::NavEngine.IsReady() && !F::NavEngine.IsSetupTime())
+	else if (F::NavEngine.IsReady() && !F::NavEngine.IsSetupTime() && F::NavEngine.m_eCurrentPriority == PriorityListEnum::None)
 	{
 		float flIdleTime = SDK::PlatFloatTime() - m_tIdleTimer.GetLastUpdate();
 		if (flIdleTime > m_flNextIdleTime)
@@ -379,6 +384,10 @@ static std::wstring BuildJobLabel()
 		return L"MvM money";
 	case PriorityListEnum::MVMFrontline:
 		return L"MvM frontline";
+	case PriorityListEnum::MVMSniper:
+		return L"MvM sniper";
+	case PriorityListEnum::BuyBot:
+		return L"Buy bot";
 	default:
 		return L"None";
 	}

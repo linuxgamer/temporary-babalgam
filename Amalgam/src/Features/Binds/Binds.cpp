@@ -60,12 +60,6 @@ static inline void GetBinds(int iParent, CTFPlayer* pLocal, CTFWeaponBase* pWeap
 			{
 			case BindEnum::Key:
 			{
-				if (i < F::Binds.m_vPlaybackActive.size())
-				{	// movement recorder playback, replay the recorded bind state directly
-					tBind.m_bActive = F::Binds.m_vPlaybackActive[i] != 0;
-					break;
-				}
-
 				bool bKey = false;
 				switch (tBind.m_iInfo)
 				{

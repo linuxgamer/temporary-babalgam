@@ -30,7 +30,6 @@
 #include "Interfaces/IMatSystemSurface.h"
 #include "Interfaces/IMemAlloc.h"
 #include "Interfaces/IMoveHelper.h"
-#include "Interfaces/INetworkStringTable.h"
 #include "Interfaces/IPanel.h"
 #include "Interfaces/ISpatialPartition.h"
 #include "Interfaces/IStudioRender.h"

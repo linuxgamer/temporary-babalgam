@@ -17,15 +17,13 @@ struct RestoreInfo_t
 class CEnginePrediction
 {
 private:
+	void Simulate(CTFPlayer* pLocal, CUserCmd* pCmd);
+
 	CMoveData m_tMoveData = {};
 	DatamapRestore_t m_tLocal = {};
 	std::unordered_map<CTFPlayer*, RestoreInfo_t> m_mRestore = {};
 
 public:
-	void Simulate(CTFPlayer* pLocal, CUserCmd* pCmd);
-	float GetTargetPredictZVelocity() const;
-	bool  IsTargetPredictZVelocity(float flVz, float flEpsilon = 0.1f) const;
-
 	void Start(CTFPlayer* pLocal, CUserCmd* pCmd);
 	void End(CTFPlayer* pLocal, CUserCmd* pCmd);
 

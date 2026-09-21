@@ -11,6 +11,7 @@ public:
 	std::vector<byte> PatternToByte(const char* szPattern);
 	std::vector<int> PatternToInt(const char* szPattern);
 	uintptr_t FindSignature(const char* szModule, const char* szPattern);
+	uintptr_t FindOptionalSignature(const char* szModule, const char* szPattern);
 	uintptr_t FindSignatureAtAddress(uintptr_t uAddress, const char* szPattern, uintptr_t uSkipAddress = 0x0, bool* bRetFound = nullptr);
 	uintptr_t FindSignatureAtAddress(uintptr_t uAddress, std::vector<int> vPattern, uintptr_t uSkipAddress = 0x0, bool* bRetFound = nullptr);
 	PVOID FindInterface(const char* szModule, const char* szObject);
@@ -56,8 +57,15 @@ public:
 	template <typename T>
 	inline T GetModuleExport(const char* szModule, const char* szExport)
 	{
+		if (!szModule || !szExport)
+			return nullptr;
+
 		if (const auto hModule = GetModuleHandle(szModule))
-			return reinterpret_cast<T>(GetProcAddress(hModule, szExport));
+		{
+			if (const auto pProc = GetProcAddress(hModule, szExport))
+				return reinterpret_cast<T>(pProc);
+		}
+
 		return reinterpret_cast<T>(nullptr);
 	}
 };

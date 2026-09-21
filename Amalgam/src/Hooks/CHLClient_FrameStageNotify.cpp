@@ -16,9 +16,9 @@
 #include "../Features/Visuals/Groups/Groups.h"
 #include "../Features/Visuals/Materials/Materials.h"
 #include "../Features/Visuals/OffscreenArrows/OffscreenArrows.h"
+#ifndef TEXTMODE
 #include "../Features/Visuals/SkinChanger/SkinChanger.h"
-#include "../Features/Visuals/Weather/Weather.h"
-#include "../Features/Visuals/HatChanger/HatChanger.h"
+#endif
 #ifdef TEXTMODE
 #include "../Features/Misc/AutoQueue/AutoQueue.h"
 #include "../Features/Misc/NamedPipe/NamedPipe.h"
@@ -28,6 +28,11 @@ MAKE_HOOK(CHLClient_FrameStageNotify, U::Memory.GetVirtual(I::Client, 35), void,
 	void* rcx, ClientFrameStage_t curStage)
 {
 	DEBUG_RETURN(CHLClient_FrameStageNotify, rcx, curStage);
+
+#ifndef TEXTMODE
+	if (curStage == FRAME_NET_UPDATE_POSTDATAUPDATE_END)
+		F::SkinChanger.Apply();
+#endif
 
 	CALL_ORIGINAL(rcx, curStage);
 
@@ -42,14 +47,6 @@ MAKE_HOOK(CHLClient_FrameStageNotify, U::Memory.GetVirtual(I::Client, 35), void,
 
 	switch (curStage)
 	{
-	case FRAME_NET_UPDATE_POSTDATAUPDATE_START:
-	{
-#ifndef TEXTMODE
-		F::SkinChanger.ApplySkins();
-		F::HatChanger.ApplyHats();
-#endif
-		break;
-	}
 	case FRAME_NET_UPDATE_START:
 	{
 #ifndef TEXTMODE
@@ -76,7 +73,6 @@ MAKE_HOOK(CHLClient_FrameStageNotify, U::Memory.GetVirtual(I::Client, 35), void,
 		F::Glow.Store(pLocal);
 		F::OffscreenArrows.Store();
 		F::Visuals.Store();
-		F::SkinChanger.UpdateViewmodels(pLocal);
 #endif
 
 		F::CheatDetection.Run();
@@ -89,16 +85,14 @@ MAKE_HOOK(CHLClient_FrameStageNotify, U::Memory.GetVirtual(I::Client, 35), void,
 		break;
 	}
 	case FRAME_RENDER_START:
+#ifndef TEXTMODE
+		if (I::EngineClient && I::EngineClient->IsTakingScreenshot())
+			SDK::NotifyCleanScreenshot();
+		SDK::UpdateSteamScreenshotHook();
+#endif
 #ifdef TEXTMODE
 		F::AutoQueue.Run();
 		F::NamedPipe.ProcessCommandQueue();
-#else
-		F::HatChanger.ManualHudUnusualTick();
-		F::Weather.Run();
-		// gate flip world: alive in game only
-		G::FlipWorldActive = Vars::Visuals::Weather::FlipWorld.Value
-			&& I::EngineClient->IsInGame()
-			&& H::Entities.GetLocal() && H::Entities.GetLocal()->IsAlive();
 #endif
 		for (auto& tBind : F::Binds.m_vBinds)
 		{	// don't drop inputs for binds

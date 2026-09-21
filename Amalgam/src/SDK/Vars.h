@@ -184,8 +184,8 @@ NAMESPACE_BEGIN(Vars)
 		CVar(MenuShowsBinds, "Menu shows binds", false, NOBIND);
 
 		CVarEnum(Indicators, "Indicators", 0b00000, VISUAL | DROPDOWN_MULTI, nullptr,
-			VA_LIST("Ticks", "Crit hack", "Spectators", "Ping", "Conditions", "Seed prediction", "Navbot", "Jumpbug", "Edgebug"),
-			Ticks = 1 << 0, CritHack = 1 << 1, Spectators = 1 << 2, Ping = 1 << 3, Conditions = 1 << 4, SeedPrediction = 1 << 5, NavBot = 1 << 6, Jumpbug = 1 << 7, Edgebug = 1 << 8);
+			VA_LIST("Ticks", "Crit hack", "Spectators", "Ping", "Conditions", "Seed prediction", "Navbot"),
+			Ticks = 1 << 0, CritHack = 1 << 1, Spectators = 1 << 2, Ping = 1 << 3, Conditions = 1 << 4, SeedPrediction = 1 << 5, NavBot = 1 << 6);
 
 		CVar(BindsDisplay, "Binds display", DragBox_t(100, 100), VISUAL | NOBIND);
 		CVar(TicksDisplay, "Ticks display", DragBox_t(), VISUAL | NOBIND);
@@ -195,8 +195,7 @@ NAMESPACE_BEGIN(Vars)
 		CVar(ConditionsDisplay, "Conditions display", DragBox_t(), VISUAL | NOBIND);
 		CVar(SeedPredictionDisplay, "Seed prediction display", DragBox_t(), VISUAL | NOBIND);
 		CVar(NavBotDisplay, "Navbot display", DragBox_t(), VISUAL | NOBIND);
-		CVar(JumpbugDisplay, "Jumpbug display", DragBox_t(), VISUAL | NOBIND);
-		CVar(EdgebugDisplay, "Edgebug display", DragBox_t(), VISUAL | NOBIND);
+		CVar(RecorderDisplay, "Recorder display", DragBox_t(), VISUAL | NOBIND); // movement recorder HUD box position
 
 		CVar(Scale, "Scale", 1.f, NOBIND | SLIDER_MIN | SLIDER_PRECISION | SLIDER_NOAUTOUPDATE, 0.75f, 2.f, 0.25f);
 		CVar(CheapText, "Cheap text", false, NOBIND);
@@ -223,7 +222,6 @@ NAMESPACE_BEGIN(Vars)
 		CVar(FOVCircle, "FOV circle color", Color_t(255, 255, 255, 100), VISUAL);
 		CVar(NoSpread, "Nospread color", Color_t(75, 175, 255, 255), VISUAL);
 		CVar(SpellFootstep, "Spell footstep color", Color_t(255, 255, 255, 255), VISUAL);
-		CVar(KillstreakSheen, "Killstreak sheen color", Color_t(255, 255, 255, 255), VISUAL);
 
 		CVar(WorldModulation, VA_LIST("World modulation", "World modulation color"), Color_t(255, 255, 255, 255), VISUAL);
 		CVar(SkyModulation, VA_LIST("Sky modulation", "Sky modulation color"), Color_t(255, 255, 255, 255), VISUAL);
@@ -599,6 +597,20 @@ NAMESPACE_BEGIN(Vars)
 			CVar(CleanScreenshots, "Clean screenshots", true);
 		NAMESPACE_END(UI)
 
+		NAMESPACE_BEGIN(SkinChanger)
+			CVar(Enabled, "Skin changer", false, VISUAL);
+			CVar(PaintKit, "Paint kit", 0, VISUAL | SLIDER_MIN, 0, 1600, 1);
+			CVar(Australium, "Australium", false, VISUAL);
+			CVar(Festive, "Festive", false, VISUAL);
+			CVar(Killstreak, "Killstreak", 0, VISUAL | SLIDER_CLAMP, 0, 3, 1);
+			CVarEnum(Sheen, "Sheen", 0, VISUAL, nullptr,
+				VA_LIST("Off", "Team shine", "Deadly daffodil", "Manndarin", "Mean green", "Agonizing emerald", "Villainous violet", "Hot rod"),
+				Off, TeamShine, DeadlyDaffodil, Manndarin, MeanGreen, AgonizingEmerald, VillainousViolet, HotRod);
+			CVarEnum(Unusual, "Weapon unusual", 0, VISUAL, nullptr,
+				VA_LIST("Off", "Hot", "Isotope", "Cool", "Energy orb"),
+				Off, Hot, Isotope, Cool, EnergyOrb);
+		NAMESPACE_END(SkinChanger)
+
 		NAMESPACE_BEGIN(Thirdperson)
 			CVar(Enabled, "Thirdperson", false, VISUAL);
 			CVar(Crosshair, VA_LIST("Crosshair", "Thirdperson crosshair"), false, VISUAL);
@@ -744,9 +756,6 @@ NAMESPACE_BEGIN(Vars)
 		
 		NAMESPACE_BEGIN(Other, Other Visuals)
 			CVar(KillstreakWeapons, "Killstreak weapons", false, VISUAL);
-			CVarEnum(SheenColor, "Sheen color", 0, VISUAL, nullptr,
-				VA_LIST("Off", "Custom", "Rainbow"),
-				Off, Custom, Rainbow);
 		NAMESPACE_END(Other);
 
 		NAMESPACE_BEGIN(Trajectory)
@@ -775,52 +784,6 @@ NAMESPACE_BEGIN(Vars)
 			CVar(MaxVelocity, "Max velocity", 0.f, NOSAVE | DEBUGVAR | SLIDER_MIN | SLIDER_PRECISION, 0.f, 4000.f, 50.f);
 			CVar(MaxAngularVelocity, "Max angular velocity", 0.f, NOSAVE | DEBUGVAR | SLIDER_MIN | SLIDER_PRECISION, 0.f, 7200.f, 50.f);
 		NAMESPACE_END(ProjectileTrajectory)
-
-		// Weather / fog / world flip, ported from AmalgamAdvanced
-		NAMESPACE_BEGIN(Weather)
-			CVar(Fog, "Fog override", false, VISUAL);
-			CVar(FogStart, "Fog start", 0.f,   VISUAL | SLIDER_PRECISION, 0.f, 8192.f, 32.f, "%.0f");
-			CVar(FogEnd,   "Fog end",   2048.f, VISUAL | SLIDER_PRECISION, 0.f, 8192.f, 32.f, "%.0f");
-			CVar(FogDensity, "Fog density", 0.5f, VISUAL | SLIDER_PRECISION, 0.f, 1.f, 0.01f, "%.2f");
-			CVar(FogLinkSkybox, "Link skybox fog", true, VISUAL);
-			CVar(FogSkyStart,   "Sky fog start",   0.f,    VISUAL | SLIDER_PRECISION, 0.f, 8192.f, 32.f, "%.0f");
-			CVar(FogSkyEnd,     "Sky fog end",     2048.f, VISUAL | SLIDER_PRECISION, 0.f, 8192.f, 32.f, "%.0f");
-			CVar(FogSkyDensity, "Sky fog density", 0.5f,   VISUAL | SLIDER_PRECISION, 0.f, 1.f, 0.01f, "%.2f");
-			CVar(FogColor, "Fog color", Color_t(200, 200, 200, 255), VISUAL);
-			CVarEnum(Precipitation, "Precipitation", 0, VISUAL, nullptr,
-				VA_LIST("Off", "Rain", "Snow"),
-				Off, Rain, Snow);
-			CVar(RainAlpha,   "Rain alpha",    0.5f,  VISUAL | SLIDER_PRECISION, 0.f, 1.f, 0.05f, "%.2f");
-			CVar(RainSpeed,   "Rain speed",    1500.f,VISUAL | SLIDER_PRECISION, 100.f, 4000.f, 50.f, "%.0f");
-			CVar(RainWidth,   "Rain width",    0.5f,  VISUAL | SLIDER_PRECISION, 0.1f, 4.f, 0.1f, "%.1f");
-			CVar(RainLength,  "Rain length",   0.1f,  VISUAL | SLIDER_PRECISION, 0.01f, 1.f, 0.01f, "%.2f");
-			CVar(RainRadius,  "Rain radius",   1500.f,VISUAL | SLIDER_PRECISION, 100.f, 4000.f, 50.f, "%.0f");
-			CVar(RainSideVel, "Rain side vel", 130.f,  VISUAL | SLIDER_PRECISION, 0.f, 500.f, 10.f, "%.0f");
-			CVar(SnowAlpha,   "Snow alpha",   0.8f,  VISUAL | SLIDER_PRECISION, 0.f, 1.f, 0.05f, "%.2f");
-			CVar(SnowSpeed,   "Snow speed",   150.f,  VISUAL | SLIDER_PRECISION, 10.f, 1000.f, 10.f, "%.0f");
-			CVar(SnowWidth,   "Snow width",   2.f,   VISUAL | SLIDER_PRECISION, 0.5f, 8.f, 0.25f, "%.2f");
-			CVar(SnowLength,  "Snow length",  0.05f, VISUAL | SLIDER_PRECISION, 0.01f, 0.5f, 0.01f, "%.2f");
-			CVar(SnowRadius,  "Snow radius",  1500.f,VISUAL | SLIDER_PRECISION, 100.f, 4000.f, 50.f, "%.0f");
-			CVar(SnowSideVel, "Snow side vel",40.f,   VISUAL | SLIDER_PRECISION, 0.f, 300.f, 5.f, "%.0f");
-			CVar(SnowDensity, "Snow density", 1.f,   VISUAL | SLIDER_PRECISION, 0.1f, 5.f, 0.1f, "%.1f");
-			CVar(SnowSprite,  "Snow sprite",  std::string("particle/snow"), VISUAL);
-			CVar(FlipWorld, "Flip world", false, VISUAL);
-		NAMESPACE_END(Weather)
-
-		// Fake POV (demo cam angle offset), ported from AmalgamAdvanced
-		NAMESPACE_BEGIN(FakePOV)
-			CVar(Enabled, "Fake POV", false, VISUAL);
-			CVarEnum(Mode, "Fake POV mode", 0, VISUAL, nullptr,
-				VA_LIST("Right", "Left", "Up", "Bottom", "Backwards", "Spinning"),
-				Right, Left, Up, Bottom, Backwards, Spinning);
-			CVar(SmoothSpeed, "Smooth speed", 5.f, VISUAL | SLIDER_PRECISION, 0.1f, 30.f, 0.5f, "%.1f");
-			CVar(SpinSpeed, "Spin speed", 90.f, VISUAL | SLIDER_PRECISION, 10.f, 720.f, 5.f, "%.0f");
-			CVar(SnapView, "Snap view on disable", true, VISUAL);
-			CVar(Arrow, "Show arrow", true, VISUAL);
-			CVar(ArrowColor, "Arrow color", Color_t(255, 200, 50, 220), VISUAL);
-			CVar(ArrowSize, "Arrow size", 12.f, VISUAL | SLIDER_PRECISION, 4.f, 40.f, 1.f, "%.0f");
-			CVar(ArrowDist, "Arrow distance", 28.f, VISUAL | SLIDER_PRECISION, 0.f, 120.f, 2.f, "%.0f");
-		NAMESPACE_END(FakePOV)
 	NAMESPACE_END(Visuals)
 
 	NAMESPACE_BEGIN(Misc)
@@ -851,52 +814,7 @@ I dont think this is a good idea to disable simulations completely:
 			CVar(Bunnyhop, "Bunnyhop", false);
 			CVar(EdgeJump, "Edge jump", false);
 			CVar(BreakJump, "Break jump", false);
-			CVar(JumpBug, "Jump bug", false);
-			CVar(JumpBugSound, "Jump bug sound", true);
-			CVar(EdgeBugSound, "Edgebug sound", true);
-			CVar(PixelSurf, "Pixel surf", false);
-			// movement suite
-			CVar(LongJump, "Long jump", false);
-			CVar(MiniJump, "Mini jump", false);
-			CVar(MiniJumpHoldDuck, "Mini jump hold duck", false);
-			CVar(MiniJumpQueue, "Mini jump queue presses", false);
-			CVar(AutoAlign, "Auto align", false);
-			CVar(TextureBug, "Texture bug", false);
-			CVar(TextureBugChokeTick, "Texture bug choke tick", false);
-			CVar(TextureBugChokeTicks, "Texture bug choke ticks", 1, SLIDER_CLAMP, 1, 14);
-			CVar(TextureBugAutoCrouch, "Texture bug auto crouch", false);
-			CVar(TextureBugEdgeStop, "Texture bug edge stop", true);
-			CVar(TextureBugHoldTicks, "Texture bug hold ticks", 6, SLIDER_CLAMP, 0, 16);
-			CVar(TextureBugCatchEps, "Texture bug catch tolerance", 1.0f, SLIDER_CLAMP | SLIDER_PRECISION, 0.25f, 4.0f, 0.05f);
-			CVar(TextureBugReach, "Texture bug reach", 12.f, SLIDER_CLAMP, 1.f, 48.f, 1.f);
-			CVar(TextureBugScanStep, "Texture bug scan step", 2.f, SLIDER_CLAMP, 1.f, 8.f, 1.f);
-			CVar(HeadSurf, "Head surf", false);
-			CVar(WallClimb, "Wall climb", false);
-			CVar(AirStuck, "Air stuck", false);
-			CVar(AirStuckCatchEps, "Air stuck catch tolerance", 4.5f, SLIDER_CLAMP | SLIDER_PRECISION, 1.0f, 8.0f, 0.25f);
-			CVar(AirStuckReach, "Air stuck reach", 72.f, SLIDER_CLAMP, 16.f, 128.f, 1.f);
-			CVar(AirStuckFlushTol, "Air stuck flush tolerance", 56.f, SLIDER_CLAMP, 8.f, 96.f, 1.f);
-			CVar(AirStuckDriftGain, "Air stuck drift gain", 18.f, SLIDER_CLAMP, 4.f, 40.f, 1.f);
-			CVar(AirStuckSimBudget, "Air stuck sim budget", 64, SLIDER_CLAMP, 16, 128);
-			CVar(PixelFinder, "Pixel finder", false);
-			CVar(PixelFinderScanMargin, "Pixel finder scan margin", 8.f, SLIDER_CLAMP | SLIDER_PRECISION, 0.f, 64.f, 1.f);
-			CVar(PixelSurfLine, "Pixel surf line", false);
-			CVar(PixelSurfLineColor, "Pixel surf line color", Color_t(0, 255, 255, 255), VISUAL);
-			CVar(PixelSurfAssist, "Pixel surf assist", false);
-			CVar(PixelSurfAssistSetPoint, "Pixel surf assist set point", false);
-			CVar(PixelSurfAssistRender, "Pixel surf assist render", false);
-			CVar(PixelSurfAssistSteer, "Pixel surf assist steer lock", false);
-			CVar(PixelSurfAssistJumpBox, "Pixel surf assist jump box", false);
-			CVar(PixelSurfAssistRadius, "Pixel surf assist radius", 300.f, SLIDER_CLAMP | SLIDER_PRECISION, 16.f, 1024.f, 16.f);
-			CVar(PixelSurfAssistReachMini, "PSA reach mini", 30.f, SLIDER_CLAMP | SLIDER_PRECISION, 0.f, 160.f, 1.f);
-			CVar(PixelSurfAssistReachRegular, "PSA reach regular", 45.f, SLIDER_CLAMP | SLIDER_PRECISION, 0.f, 160.f, 1.f);
-			CVar(PixelSurfAssistReachMiniDuck, "PSA reach mini+duck", 55.f, SLIDER_CLAMP | SLIDER_PRECISION, 0.f, 160.f, 1.f);
-			CVar(PixelSurfAssistReachCrouch, "PSA reach crouch", 72.f, SLIDER_CLAMP | SLIDER_PRECISION, 0.f, 160.f, 1.f);
-			CVar(PixelSurfAssistReachLong, "PSA reach long", 60.f, SLIDER_CLAMP | SLIDER_PRECISION, 0.f, 160.f, 1.f);
-			CVar(PixelSurfAssistReachLongDuck, "PSA reach long+duck", 85.f, SLIDER_CLAMP | SLIDER_PRECISION, 0.f, 160.f, 1.f);
-			CVar(PixelSurfAssistLongMinDist, "PSA long min distance", 200.f, SLIDER_CLAMP | SLIDER_PRECISION, 0.f, 600.f, 10.f);
-			CVar(PixelSurfAssistDeletePoint, "Pixel surf assist delete point", false);
-			CVar(PixelSurfAssistSnapDist, "PSA snap/delete distance", 48.f, SLIDER_CLAMP | SLIDER_PRECISION, 4.f, 256.f, 1.f);
+			CVar(AutoJumpbug, "Auto jumpbug", false);
 			CVarEnum(AutoEdgebug, "Auto edgebug", 0, NONE, nullptr,
 				VA_LIST("Off", "Legit", "Strafe", "Strafe silent"),
 				Off, Legit, Strafe, StrafeSilent);
@@ -910,8 +828,33 @@ I dont think this is a good idea to disable simulations completely:
 			CVar(ShieldTurnRate, "Shield turn rate", false);
 			CVar(NoPush, "No push", false);
 			CVar(MovementLock, "Movement lock", false);
-			CVar(RecorderRepeat, "Recorder repeat", false);
-			CVar(RecorderViewAngles, "Recorder view angles", true);
+
+			// Movement recorder: record/replay per-map named routes.
+			CVar(MovementRecorder, "Movement recorder", false);
+			CVar(MovementRecorderRecord, "Recorder record", false);
+			CVar(MovementRecorderPlay, "Recorder play", false);
+			CVar(MovementRecorderStop, "Recorder stop", false);
+			CVar(MovementRecorderSave, "Recorder save", false);
+			CVar(MovementRecorderLoad, "Recorder load", false);
+			CVar(MovementRecorderClear, "Recorder clear", false);
+			CVar(MovementRecorderHud, "Recorder HUD", false);
+			CVar(MovementRecorderMoveToStart, "Recorder move to start", false);
+			CVar(MovementRecorderLockView, "Recorder lock view", false); // lock the camera to the replayed view
+			CVar(MovementRecorderMoveToStartDist, "Recorder move-to-start max", 600, SLIDER_CLAMP, 0, 4096);
+			CVar(MovementRecorderStartTolerance, "Recorder start tolerance", 0.1f, SLIDER_CLAMP | SLIDER_PRECISION, 0.02f, 8.f, 0.01f);
+			CVar(MovementRecorderStartSpeed, "Recorder start speed", 6, SLIDER_CLAMP, 0, 50);
+			CVar(MovementRecorderDriftCorrect, "Recorder drift correct", false);
+			CVar(MovementRecorderDriftStrength, "Recorder drift strength", 60.f, SLIDER_CLAMP | SLIDER_PRECISION, 0.f, 250.f, 5.f);
+			CVar(MovementRecorderVerbatim, "Recorder verbatim replay", false);
+			CVar(MovementRecorderShowRoutes, "Recorder show routes", false);
+			CVar(MovementRecorderShowPath, "Recorder show path", false);
+			CVar(MovementRecorderRouteSolid, "Recorder route solid ring", false);
+			CVar(MovementRecorderRoutePoints, "Recorder route points", 8, SLIDER_CLAMP, 3, 32);
+			CVar(MovementRecorderRouteRadius, "Recorder route radius", 28.f, SLIDER_CLAMP | SLIDER_PRECISION, 8.f, 128.f, 1.f);
+			CVar(MovementRecorderRouteColor, "Recorder route color", Color_t(255, 255, 255, 255), VISUAL);
+			CVar(MovementRecorderShadowPlay, "Recorder shadowplay", false);
+			CVar(MovementRecorderShadowSave, "Recorder shadow save", false);
+			CVar(MovementRecorderShadowSeconds, "Recorder shadow seconds", 60, SLIDER_CLAMP, 5, 120);
 
 			NAMESPACE_BEGIN(NavEngine)
 				CVar(Enabled, VA_LIST("Enabled", "Nav engine enabled"), false);
@@ -928,9 +871,10 @@ I dont think this is a good idea to disable simulations completely:
 				CVar(StuckBlacklistTime, "Stuck blacklist time", 90, SLIDER_MIN, 20, 600, 20, "%is");
 				CVar(StuckExpireTime, "Stuck expire time", 20, SLIDER_MIN, 5, 100, 5, "%is");
 				CVar(StuckTime, "Stuck time", 0.25f, SLIDER_MIN, 0.25f, 0.9f, 0.05f, "%gs");
+				CVar(OffPathRepath, "Off-path repath", false, NOSAVE | DEBUGVAR);
 
 				CVar(VischeckEnabled, "Vischeck enabled", true);
-				CVar(VischeckTime, "Vischeck time", 0.25f, SLIDER_MIN, 0.005f, 3.f, 0.005f, "%gs");
+				CVar(VischeckTime, "Vischeck time", 2.f, SLIDER_MIN, 0.5f, 3.f, 0.5f, "%gs");
 				CVar(VischeckCacheTime, "Vischeck cache time", 45, SLIDER_MIN, 10, 500, 10, "%is");
 			NAMESPACE_END(NavEngine)
 
@@ -945,6 +889,7 @@ I dont think this is a good idea to disable simulations completely:
 					Off, Simple, MoveSim);
 				CVar(AutoScopeCancelTime, "Auto scope cancel time", 3, SLIDER_MIN, 1, 5, 1, "%is");
 				CVar(AutoScopeUseCachedResults, "Auto scope use cached results", true, NOSAVE | DEBUGVAR);
+				CVar(AutoHeatmakerFocus, "Auto heatmaker focus", false);
 				CVar(LookAtPathDebug, "Look at path debug", false, NOSAVE | DEBUGVAR);
 			NAMESPACE_END(BotUtils)
 
@@ -967,8 +912,8 @@ I dont think this is a good idea to disable simulations completely:
 				CVar(RechargeDTDelay, "Recharge DT delay", 5, SLIDER_MIN, 0, 10, 1, "%is");
 
 				CVarEnum(Preferences, "Preferences", 0b100001111110111, DROPDOWN_MULTI, nullptr,
-					VA_LIST("Get health", "Get ammo", "Reload weapons", "Stalk enemies", "Defend objectives", "Capture objectives", "Help capture objectives", "Escape danger", "Safe capping", "Target sentries", "Auto engie", "##Divider", "Target sentries low range", "Help capture objective friend only", "Dont escape danger with intel", "Group with others"),
-					SearchHealth = 1 << 0, SearchAmmo = 1 << 1, ReloadWeapons = 1 << 2, StalkEnemies = 1 << 3, DefendObjectives = 1 << 4, CaptureObjectives = 1 << 5, HelpCaptureObjectives = 1 << 6, EscapeDanger = 1 << 7, SafeCapping = 1 << 8, TargetSentries = 1 << 9, AutoEngie = 1 << 10, TargetSentriesLowRange = 1 << 11, HelpFriendlyCaptureObjectives = 1 << 12, DontEscapeDangerIntel = 1 << 13, GroupWithOthers = 1 << 14);
+					VA_LIST("Get health", "Get ammo", "Reload weapons", "Stalk enemies", "Defend objectives", "Capture objectives", "Help capture objectives", "Escape danger", "Safe capping", "Target sentries", "Auto engie", "##Divider", "Target sentries low range", "Help capture objective friend only", "Dont escape danger with intel", "Group with others", "MvM Sniper (overrides other jobs)"),
+					SearchHealth = 1 << 0, SearchAmmo = 1 << 1, ReloadWeapons = 1 << 2, StalkEnemies = 1 << 3, DefendObjectives = 1 << 4, CaptureObjectives = 1 << 5, HelpCaptureObjectives = 1 << 6, EscapeDanger = 1 << 7, SafeCapping = 1 << 8, TargetSentries = 1 << 9, AutoEngie = 1 << 10, TargetSentriesLowRange = 1 << 11, HelpFriendlyCaptureObjectives = 1 << 12, DontEscapeDangerIntel = 1 << 13, GroupWithOthers = 1 << 14, MVMSniper = 1 << 15);
 				CVar(MeleeTargetRange, "Melee target range", 600, NONE, 150, 4000, 50);
 				CVar(DangerOverlay, "Danger overlay", false);
 				CVar(DangerOverlayMaxDist, "Danger overlay max distance", 2000.f, SLIDER_MIN, 500.f, 6000.f, 250.f, "%0.0f");
@@ -1226,7 +1171,7 @@ I dont think this is a good idea to disable simulations completely:
 				static const std::vector<int> vItemAchievementIDs =
 				{
 					1036, 1037, 1038, 1136, 1137, 1138, 1236, 1237, 1238, 1336, 1337, 1338, 1437, 1438, 1439, 1537,
-					1538, 1539, 156, 1637, 1638, 1639, 166, 167, 1735, 1736, 1737, 1801, 1802, 1803, 1901, 1902,
+					1538, 1539, 1637, 1638, 1639, 1735, 1736, 1737, 1801, 1802, 1803, 1901, 1902,
 					1906, 1909, 1910, 1911, 1912, 1928, 2006, 2212, 2412
 				};
 				return vItemAchievementIDs;
@@ -1300,13 +1245,12 @@ I dont think this is a good idea to disable simulations completely:
 			CVar(InsecureBypass, "-insecure bypass", false);
 			CVar(AntiCheatCompatibility, "Anti-cheat compatibility", false);
 			CVar(AntiCheatCritHack, "Anti-cheat crit hack", false, NOSAVE | DEBUGVAR);
-			CVar(DiscordRPC, "Discord RPC", false, NOBIND);
 		NAMESPACE_END(Game)
 
 		NAMESPACE_BEGIN(TelemetryBlocker)
-			CVarEnum(Mode, "Telemetry blocker mode", 2, NONE, nullptr,
-				VA_LIST("Lite", "Balanced", "Aggressive"),
-				Lite = 0, Balanced = 1, Aggressive = 2);
+			CVarEnum(Mode, "Telemetry blocker mode", 0, NONE, nullptr,
+				VA_LIST("Off", "Lite", "Balanced", "Aggressive"),
+				Off = 0, Lite = 1, Balanced = 2, Aggressive = 3);
 		NAMESPACE_END(TelemetryBlocker)
 
 		NAMESPACE_BEGIN(Queueing)
@@ -1366,6 +1310,12 @@ I dont think this is a good idea to disable simulations completely:
 			CVar(RQIgnoreFriends, "Ignore Friends", false);
 			CVar(RQnoAbandon, "RQ w/o abandon", false);
 			CVar(AutoMannUpQueue, "Auto MannUp queue", false);
+			CVar(AutoBootCampQueue, "Auto BootCamp queue", false);
+			CVar(MannUpTourIndex, "MannUp tour", 0);
+			CVar(MannUpUncompleted, "Only uncompleted missions", false);
+			CVar(BootcampMissionBits, "BootCamp missions", 0b0);
+			CVar(StalkerEnable, "Profile stalker", false);
+			CVar(StalkerInterval, "Stalker interval", 15, SLIDER_CLAMP, 5, 120, 1, "%is");
 		NAMESPACE_END(Queueing)
 
 		NAMESPACE_BEGIN(MannVsMachine, Mann vs. Machine)
@@ -1378,6 +1328,13 @@ I dont think this is a good idea to disable simulations completely:
 			CVar(MaxCash, "Turn off buybot at cash", 15000, SLIDER_CLAMP | SLIDER_MIN, 0, 100000, 1000, "%i");
 			CVar(BuyBotAutoClass, "Buy Bot auto class", false);
 			CVar(BuyBotClass, "Buy Bot class", 6);
+
+			NAMESPACE_BEGIN(ChatCommands, Chat commands)
+				CVarEnum(Mode, "Allowed users", 0, NONE, nullptr,
+					VA_LIST("Off", "Party", "Friends", "Custom tag"),
+					Off, Party, Friends, CustomTag);
+				CVar(Tag, "Allowed tag", -1);
+			NAMESPACE_END(ChatCommands)
 		NAMESPACE_END(MannVsMachine)
 
 		NAMESPACE_BEGIN(Sound)
@@ -1444,8 +1401,8 @@ I dont think this is a good idea to disable simulations completely:
 
 	NAMESPACE_BEGIN(CheatDetection, Cheat Detection)
 		CVarEnum(Methods, "Detection methods", 0b000000, DROPDOWN_MULTI, nullptr,
-			VA_LIST("Invalid pitch", "Packet choking", "Aim flicking", "Duck Speed", "Lagcomp abuse", "Critbucket", "Tickbase abuse", "Speedhack"),
-			InvalidPitch = 1 << 0, PacketChoking = 1 << 1, AimFlicking = 1 << 2, DuckSpeed = 1 << 3, LagCompAbuse = 1 << 4, CritManipulation = 1 << 5, TickbaseAbuse = 1 << 6, Speedhack = 1 << 7);
+			VA_LIST("Invalid pitch", "Packet choking", "Aim flicking", "Duck Speed", "Lagcomp abuse", "Critbucket"),
+			InvalidPitch = 1 << 0, PacketChoking = 1 << 1, AimFlicking = 1 << 2, DuckSpeed = 1 << 3, LagCompAbuse = 1 << 4, CritManipulation = 1 << 5);
 		CVar(DetectionsRequired, "Detections required", 10, SLIDER_MIN, 0, 50);
 		CVar(MinChoking, "Min choking", 20, SLIDER_MIN, 4, 22);
 		CVar(MinFlick, "Min flick angle", 20.f, SLIDER_PRECISION, 10.f, 30.f); // min flick size to suspect
@@ -1455,9 +1412,6 @@ I dont think this is a good idea to disable simulations completely:
 		CVar(LagCompBurstCount, "Lag burst count", 3, SLIDER_MIN, 1, 6);
 		CVar(CritWindow, "Crit window size", 12, SLIDER_MIN, 6, 30);
 		CVar(CritThreshold, "Crit rate threshold", 85.f, SLIDER_PRECISION, 50.f, 100.f, 5.f);
-		CVar(TickbaseGapSeconds, "Tickbase gap window", 2.f, SLIDER_PRECISION, 0.5f, 4.f, 0.25f); // max time a player can go unsimulated before it's suspicious
-		CVar(SpeedhackTolerance, "Speedhack tolerance", 1.2f, SLIDER_PRECISION, 1.05f, 2.f, 0.05f); // multiplier over maxspeed*tick_interval before a tick counts as a violation
-		CVar(SpeedhackViolations, "Speedhack violations", 6, SLIDER_MIN, 2, 15); // consecutive violating ticks required before infracting
 	NAMESPACE_END(CheatDetection)
 
 	NAMESPACE_BEGIN(Debug)

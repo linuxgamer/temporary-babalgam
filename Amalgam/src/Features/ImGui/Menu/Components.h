@@ -4,9 +4,11 @@
 #include "Menu.h"
 #include "../Fonts/MaterialDesign/IconDefinitions.h"
 #include "../../Binds/Binds.h"
+#include "../../Visuals/Groups/Groups.h"
 #include "../../Visuals/Materials/Materials.h"
 #include <ImGui/imgui_internal.h>
 #include <ImGui/imgui_stdlib.h>
+#include <charconv>
 #include <numeric>
 #include <tuple>
 
@@ -702,6 +704,28 @@ namespace ImGui
 		return FSelectable(sLabel, &tColor, flRounding, bSelected, iFlags, vSize);
 	}
 
+	inline void FCheckboxTick(const ImVec2& vBoxMin, float flAlpha = 1.f)
+	{
+		ImDrawList* pDrawList = GetWindowDrawList();
+		const float flThickness = H::Draw.Scale(2);
+		const ImVec2 vCheckA = vBoxMin + ImVec2(H::Draw.Scale(2.5f), H::Draw.Scale(6.5f));
+		const ImVec2 vCheckB = vBoxMin + ImVec2(H::Draw.Scale(5.0f), H::Draw.Scale(9.0f));
+		const ImVec2 vCheckC = vBoxMin + ImVec2(H::Draw.Scale(9.0f), H::Draw.Scale(3.0f));
+		const ImVec2 vDirAB = vCheckB - vCheckA;
+		const ImVec2 vDirBC = vCheckC - vCheckB;
+		const float flExtend = flThickness * 0.5f;
+		const ImVec2 vStart = vCheckA - vDirAB * (ImInvLength(vDirAB, 0.f) * flExtend);
+		const ImVec2 vEnd = vCheckC + vDirBC * (ImInvLength(vDirBC, 0.f) * flExtend);
+
+		ImColor tCheck = F::Render.Background0;
+		tCheck.Value.w *= flAlpha * GetStyle().Alpha;
+		pDrawList->PathClear();
+		pDrawList->PathLineToMergeDuplicate(vStart);
+		pDrawList->PathLineToMergeDuplicate(vCheckB);
+		pDrawList->PathLineToMergeDuplicate(vEnd);
+		pDrawList->PathStroke(tCheck, ImDrawFlags_None, flThickness);
+	}
+
 	inline void FCheckboxIcon(const ImVec2& vPos, bool bActive, float flAlpha = 1.f)
 	{
 		ImDrawList* pDrawList = GetWindowDrawList();
@@ -718,15 +742,7 @@ namespace ImGui
 		pDrawList->AddRectFilled(vBoxMin, vBoxMax, tFill, flRounding);
 		pDrawList->AddRect(vBoxMin, vBoxMax, tBorder, flRounding, ImDrawFlags_None, H::Draw.Scale(1));
 		if (bActive)
-		{
-			ImColor tCheck = F::Render.Background0;
-			tCheck.Value.w *= flAlpha * GetStyle().Alpha;
-			ImVec2 vCheckA = vBoxMin + ImVec2(H::Draw.Scale(2.5f), H::Draw.Scale(6.5f));
-			ImVec2 vCheckB = vBoxMin + ImVec2(H::Draw.Scale(5.0f), H::Draw.Scale(9.0f));
-			ImVec2 vCheckC = vBoxMin + ImVec2(H::Draw.Scale(9.0f), H::Draw.Scale(3.0f));
-			pDrawList->AddLine(vCheckA, vCheckB, tCheck, H::Draw.Scale(2));
-			pDrawList->AddLine(vCheckB, vCheckC, tCheck, H::Draw.Scale(2));
-		}
+			FCheckboxTick(vBoxMin, flAlpha);
 	}
 
 	inline bool FBeginMenu(const char* sLabel, ImVec4* pColor, float flRounding = H::Draw.Scale(4), bool bEnabled = true)
@@ -1241,15 +1257,7 @@ namespace ImGui
 		pDrawList->AddRectFilled(vBoxMin, vBoxMax, tFill, flRounding);
 		pDrawList->AddRect(vBoxMin, vBoxMax, tBorder, flRounding, ImDrawFlags_None, H::Draw.Scale(1));
 		if (flToggleAnim > 0.01f)
-		{
-			ImColor tCheck = F::Render.Background0;
-			tCheck.Value.w *= flToggleAnim * GetStyle().Alpha;
-			ImVec2 vCheckA = vBoxMin + ImVec2(H::Draw.Scale(2.5f), H::Draw.Scale(6.5f));
-			ImVec2 vCheckB = vBoxMin + ImVec2(H::Draw.Scale(5.0f), H::Draw.Scale(9.0f));
-			ImVec2 vCheckC = vBoxMin + ImVec2(H::Draw.Scale(9.0f), H::Draw.Scale(3.0f));
-			pDrawList->AddLine(vCheckA, vCheckB, tCheck, H::Draw.Scale(2));
-			pDrawList->AddLine(vCheckB, vCheckC, tCheck, H::Draw.Scale(2));
-		}
+			FCheckboxTick(vBoxMin, flToggleAnim);
 
 		for (size_t i = 0; i < iWraps; i++)
 		{
@@ -1872,7 +1880,7 @@ namespace ImGui
 			}
 			else
 			{
-				for (int i = 0; i < sizeof(int) * 8; i++)
+				for (int i = 0; i < MAX_GROUPS; i++)
 				{
 					bool bFound = *pVar & (1 << i) && std::find(vValues.begin(), vValues.end(), (1 << i)) != vValues.end();
 					if (!bFound)
@@ -2118,10 +2126,15 @@ namespace ImGui
 		PushItemWidth(vSize.x);
 
 		static std::string sPreview = "", sInput = "", sTab = "\n";
+		static unsigned int uActiveHash = 0;
 		if (BeginCombo(std::format("##{}", sLabel).c_str(), "", ImGuiComboFlags_CustomPreview | ImGuiComboFlags_NoArrowButton | ImGuiComboFlags_HeightLarge))
 		{
-			if (!ActiveMap[uHash])
+			if (!ActiveMap[uHash] || uActiveHash != uHash)
+			{
 				sPreview = sInput = "";
+				sTab = "\n";
+				uActiveHash = uHash;
+			}
 
 			ActiveMap[uHash] = true;
 
@@ -2234,7 +2247,10 @@ namespace ImGui
 			}
 
 			if ((bEnter || iFlags & FSDropdownEnum::AutoUpdate) && (iFlags & FSDropdownEnum::Custom || vEntries.empty()))
-				*pVar = sPreview; bReturn = true;
+			{
+				*pVar = sPreview;
+				bReturn = true;
+			}
 			if (bEnter || U::KeyHandler.Down(VK_ESCAPE))
 				CloseCurrentPopup();
 
@@ -2352,10 +2368,15 @@ namespace ImGui
 		PushItemWidth(vSize.x);
 
 		static std::string sPreview = "", sInput = "", sTab = "\n";
+		static unsigned int uActiveHash = 0;
 		if (BeginCombo(std::format("##{}", sLabel).c_str(), "", ImGuiComboFlags_CustomPreview | ImGuiComboFlags_NoArrowButton | ImGuiComboFlags_HeightLarge))
 		{
-			if (!ActiveMap[uHash])
+			if (!ActiveMap[uHash] || uActiveHash != uHash)
+			{
 				sPreview = sInput = "";
+				sTab = "\n";
+				uActiveHash = uHash;
+			}
 
 			ActiveMap[uHash] = true;
 
@@ -2366,15 +2387,9 @@ namespace ImGui
 				SetKeyboardFocusHere();
 			bool bEnter = InputText("##FSDropdown", &sInput, ImGuiInputTextFlags_EnterReturnsTrue);
 
-			try
-			{
-				int check = atoi(sInput.c_str());
-			}
-			catch (const std::invalid_argument&)
-			{
-				// tf are you trying to type?
-				bEnter = false;
-			}
+			int iPreviewValue = 0;
+			const auto [pPreviewEnd, ePreviewError] = std::from_chars(sPreview.data(), sPreview.data() + sPreview.size(), iPreviewValue);
+			const bool bValidPreview = !sPreview.empty() && ePreviewError == std::errc{} && pPreviewEnd == sPreview.data() + sPreview.size();
 
 			if (sInput != sTab)
 			{
@@ -2478,8 +2493,11 @@ namespace ImGui
 				SetCursorPosY(GetCursorPosY() - H::Draw.Scale(10)); DebugDummy({});
 			}
 
-			if ((bEnter || iFlags & FSDropdownEnum::AutoUpdate) && (iFlags & FSDropdownEnum::Custom || vEntries.empty()))
-				*pVar = atoi(sPreview.c_str()); bReturn = true;
+			if ((bEnter || iFlags & FSDropdownEnum::AutoUpdate) && (iFlags & FSDropdownEnum::Custom || vEntries.empty()) && bValidPreview)
+			{
+				*pVar = iPreviewValue;
+				bReturn = true;
+			}
 			if (bEnter || U::KeyHandler.Down(VK_ESCAPE))
 				CloseCurrentPopup();
 

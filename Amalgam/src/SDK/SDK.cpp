@@ -3,8 +3,10 @@
 #include "../Features/ImGui/Notifications/Notifications.h"
 #include "../Features/ImGui/Menu/Menu.h"
 #include "../Features/EnginePrediction/EnginePrediction.h"
-#include "../Features/NavBot/NavEngine/NavEngine.h"
+#include "../Features/NavBot/NavEngine.h"
 #include "../Features/Ticks/Ticks.h"
+
+#include <Windows.h>
 
 #pragma warning (disable : 6385)
 
@@ -468,6 +470,53 @@ double SDK::PlatFloatTime()
 	return Plat_FloatTime();
 }
 
+double SDK::InitNowMs()
+{
+	static const double flFreq = []()
+	{
+		LARGE_INTEGER tFreq = {};
+		QueryPerformanceFrequency(&tFreq);
+		return tFreq.QuadPart ? double(tFreq.QuadPart) : 1.0;
+	}();
+
+	LARGE_INTEGER tNow = {};
+	QueryPerformanceCounter(&tNow);
+	return 1000.0 * double(tNow.QuadPart) / flFreq;
+}
+
+void SDK::LogInitTiming(const char* sStage, double flMs)
+{
+	const std::string sMessage = std::format("{}: {:.2f} ms", sStage ? sStage : "?", flMs);
+	if (I::CVar)
+		Output("init", sMessage.c_str(), INFO_COLOR, OUTPUT_CONSOLE | OUTPUT_DEBUG);
+	else
+		OutputDebugStringA(std::format("[init] {}\n", sMessage).c_str());
+}
+
+int SDK::GetActiveDXLevel()
+{
+	if (auto pDxLevel = H::ConVars.FindVar("mat_dxlevel"))
+		return pDxLevel->GetInt();
+	if (I::EngineClient)
+		return I::EngineClient->GetDXSupportLevel();
+	return 90;
+}
+
+bool SDK::SupportsDX9Shaders()
+{
+	return GetActiveDXLevel() >= 90;
+}
+
+SDK::CInitTimingScope::CInitTimingScope(const char* szName)
+	: m_szName(szName), m_flStart(InitNowMs())
+{
+}
+
+SDK::CInitTimingScope::~CInitTimingScope()
+{
+	LogInitTiming(m_szName, InitNowMs() - m_flStart);
+}
+
 bool SDK::W2S(const Vec3& vOrigin, Vec3& vScreen, bool bAlways)
 {
 	const auto& worldToScreen = H::Draw.m_mWorldToProjection.As3x4();
@@ -755,10 +804,12 @@ EWeaponType SDK::GetWeaponType(CTFWeaponBase* pWeapon, EWeaponType* pSecondaryTy
 			break;
 		case TF_WEAPON_LASER_POINTER:
 		{
-			auto pOwner = pWeapon->m_hOwner().Get()->As<CTFPlayer>();
+			auto pOwnerEntity = pWeapon->m_hOwner().Get();
+			auto pOwner = pOwnerEntity ? pOwnerEntity->As<CTFPlayer>() : nullptr;
 			if (pOwner && pOwner->IsPlayer())
 			{
-				auto pSentryGun = pOwner->GetObjectOfType(OBJ_SENTRYGUN)->As<CObjectSentrygun>();
+				auto pSentryEntity = pOwner->GetObjectOfType(OBJ_SENTRYGUN);
+				auto pSentryGun = pSentryEntity ? pSentryEntity->As<CObjectSentrygun>() : nullptr;
 				if (pSentryGun && pSentryGun->m_bPlayerControlled() && !pSentryGun->IsDisabled() && pSentryGun->m_iUpgradeLevel() > 2 && pSentryGun->m_iAmmoRockets() != 0)
 					*pSecondaryType = EWeaponType::PROJECTILE;
 			}
@@ -767,7 +818,8 @@ EWeaponType SDK::GetWeaponType(CTFWeaponBase* pWeapon, EWeaponType* pSecondaryTy
 		}
 		case TF_WEAPON_MECHANICAL_ARM:
 		{
-			auto pOwner = pWeapon->m_hOwner().Get()->As<CTFPlayer>();
+			auto pOwnerEntity = pWeapon->m_hOwner().Get();
+			auto pOwner = pOwnerEntity ? pOwnerEntity->As<CTFPlayer>() : nullptr;
 			if (pOwner && pOwner->IsPlayer() && pOwner->m_iMetalCount() >= 65)
 				*pSecondaryType = EWeaponType::PROJECTILE;
 		}
@@ -1492,9 +1544,156 @@ bool TriggerData_t::PointIsWithin(Vec3 vPoint) const
 	return trace.startsolid;
 }
 
+static int s_nCleanScreenshotFrames = 0;
+static bool s_bPendingSteamScreenshot = false;
+static bool s_bSteamScreenshotsHooked = false;
+static bool s_bSteamScreenshotCallbackRegistered = false;
+
+class CSteamScreenshotRequestedCallback final : public CCallbackBase
+{
+public:
+	void Run(void*) override
+	{
+		SDK::NotifyCleanScreenshot();
+		s_bPendingSteamScreenshot = true;
+	}
+	void Run(void* pParam, bool, SteamAPICall_t) override { Run(pParam); }
+	int GetCallbackSizeBytes() override { return sizeof(ScreenshotRequested_t); }
+};
+
+static CSteamScreenshotRequestedCallback s_tSteamScreenshotCallback;
+
+static void* GetSteamApiExport(const char* sName)
+{
+	if (auto pExport = U::Memory.GetModuleExport<void*>("steam_api64.dll", sName))
+		return pExport;
+	return U::Memory.GetModuleExport<void*>("steam_api.dll", sName);
+}
+
+static void RegisterSteamScreenshotCallback()
+{
+	if (s_bSteamScreenshotCallbackRegistered)
+		return;
+
+	using RegisterFn = void(__cdecl*)(CCallbackBase*, int);
+	auto RegisterCallback = reinterpret_cast<RegisterFn>(GetSteamApiExport("SteamAPI_RegisterCallback"));
+	if (!RegisterCallback)
+		return;
+
+	RegisterCallback(&s_tSteamScreenshotCallback, ScreenshotRequested_t::k_iCallback);
+	s_bSteamScreenshotCallbackRegistered = true;
+}
+
+static void UnregisterSteamScreenshotCallback()
+{
+	if (!s_bSteamScreenshotCallbackRegistered)
+		return;
+
+	using UnregisterFn = void(__cdecl*)(CCallbackBase*);
+	auto UnregisterCallback = reinterpret_cast<UnregisterFn>(GetSteamApiExport("SteamAPI_UnregisterCallback"));
+	if (UnregisterCallback)
+		UnregisterCallback(&s_tSteamScreenshotCallback);
+	s_bSteamScreenshotCallbackRegistered = false;
+}
+
+static void SubmitCleanSteamScreenshot()
+{
+	if (!I::SteamScreenshots || !I::MaterialSystem)
+		return;
+
+	auto pRenderContext = I::MaterialSystem->GetRenderContext();
+	if (!pRenderContext)
+		return;
+
+	int nWidth = 0, nHeight = 0;
+	pRenderContext->GetRenderTargetDimensions(nWidth, nHeight);
+	if (nWidth <= 0 || nHeight <= 0)
+		I::MaterialSystem->GetBackBufferDimensions(nWidth, nHeight);
+	if (nWidth <= 0 || nHeight <= 0 || nWidth > 7680 || nHeight > 4320)
+	{
+		pRenderContext->Release();
+		return;
+	}
+
+	const auto nBytes = static_cast<uint32>(nWidth) * nHeight * 3;
+	std::vector<unsigned char> vRgb(nBytes);
+	pRenderContext->ReadPixels(0, 0, nWidth, nHeight, vRgb.data(), IMAGE_FORMAT_RGB888);
+	pRenderContext->Release();
+	I::SteamScreenshots->WriteScreenshot(vRgb.data(), nBytes, nWidth, nHeight);
+}
+
+void SDK::NotifyCleanScreenshot()
+{
+	if (s_nCleanScreenshotFrames < 3)
+		s_nCleanScreenshotFrames = 3;
+}
+
+void SDK::TickCleanScreenshot()
+{
+	if (s_bPendingSteamScreenshot && s_nCleanScreenshotFrames > 0)
+	{
+		SubmitCleanSteamScreenshot();
+		s_bPendingSteamScreenshot = false;
+	}
+
+	if (s_nCleanScreenshotFrames > 0)
+		s_nCleanScreenshotFrames--;
+}
+
+void SDK::UpdateSteamScreenshotHook()
+{
+	if (!Vars::Visuals::UI::CleanScreenshots.Value)
+	{
+		if (s_bSteamScreenshotsHooked && I::SteamScreenshots)
+		{
+			I::SteamScreenshots->HookScreenshots(false);
+			s_bSteamScreenshotsHooked = false;
+		}
+		UnregisterSteamScreenshotCallback();
+		s_bPendingSteamScreenshot = false;
+		return;
+	}
+
+	if (!I::SteamScreenshots)
+		return;
+
+	RegisterSteamScreenshotCallback();
+
+	static bool s_bF12Down = false;
+	const bool bF12 = (GetAsyncKeyState(VK_F12) & 0x8000) != 0;
+	if (bF12 && !s_bF12Down)
+	{
+		NotifyCleanScreenshot();
+		s_bPendingSteamScreenshot = true;
+	}
+	s_bF12Down = bF12;
+
+	if (!s_bSteamScreenshotsHooked)
+	{
+		I::SteamScreenshots->HookScreenshots(true);
+		s_bSteamScreenshotsHooked = true;
+	}
+}
+
+void SDK::ShutdownSteamScreenshotHook()
+{
+	s_bPendingSteamScreenshot = false;
+	s_nCleanScreenshotFrames = 0;
+	if (s_bSteamScreenshotsHooked && I::SteamScreenshots)
+	{
+		I::SteamScreenshots->HookScreenshots(false);
+		s_bSteamScreenshotsHooked = false;
+	}
+	UnregisterSteamScreenshotCallback();
+}
+
 bool SDK::CleanScreenshot()
 {
-	return Vars::Visuals::UI::CleanScreenshots.Value && I::EngineClient->IsTakingScreenshot();
+	if (!Vars::Visuals::UI::CleanScreenshots.Value)
+		return false;
+	if (s_nCleanScreenshotFrames > 0)
+		return true;
+	return I::EngineClient && I::EngineClient->IsTakingScreenshot();
 }
 
 void SDK::CanAttack(CTFPlayer* pLocal, CTFWeaponBase* pWeapon, const CUserCmd* pCmd, bool& bPrimary, bool& bSecondary, bool& bReloading)
@@ -1575,6 +1774,9 @@ void SDK::CanAttack(CTFPlayer* pLocal, CTFWeaponBase* pWeapon, const CUserCmd* p
 				float flMeterMult = S::IHasGenericMeter_GetMeterMultiplier.Call<float>(pWeapon->m_pMeter());
 				float flRate = SDK::AttribHookValue(1.f, "item_meter_charge_rate", pWeapon) - 1;
 				float flMult = SDK::AttribHookValue(1.f, "mult_item_meter_charge_rate", pWeapon);
+				if (flRate <= 0.f || flMult <= 0.f)
+					break;
+
 				float flTankPressure = pLocal->m_flTankPressure() + flFrametime * flMeterMult / (flRate * flMult);
 
 				if (bPrimary && flTankPressure < 100.f)
@@ -1599,7 +1801,8 @@ void SDK::CanAttack(CTFPlayer* pLocal, CTFWeaponBase* pWeapon, const CUserCmd* p
 			break;
 		case TF_WEAPON_LASER_POINTER:
 		{
-			auto pSentry = pLocal->GetObjectOfType(OBJ_SENTRYGUN)->As<CObjectSentrygun>();
+			auto pSentryEntity = pLocal->GetObjectOfType(OBJ_SENTRYGUN);
+			auto pSentry = pSentryEntity ? pSentryEntity->As<CObjectSentrygun>() : nullptr;
 			if (!pSentry || !pSentry->m_bPlayerControlled() || pSentry->IsDisabled())
 			{
 				bPrimary = bSecondary = false;

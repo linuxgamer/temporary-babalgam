@@ -48,15 +48,6 @@ struct PlayerInfo
 		std::unordered_map<int, WeaponHistory_t> m_mWeaponHistory = {};
 		bool m_bInfract = false;
 	} m_CritTracker;
-
-	struct MovementAbuse_t
-	{
-		int m_iLastSimTicks = -1;
-		Vec3 m_vLastOrigin = {};
-		float m_flTickbaseWait = 0.f;
-		float m_flSpeedhackWait = 0.f;
-		int m_iSpeedhackViolations = 0;
-	} m_MovementAbuse;
 };
 
 class CCheatDetection
@@ -71,8 +62,6 @@ private:
 	bool IsLagCompAbusing(CTFPlayer* pEntity, int iDeltaTicks);
 	bool IsCritManipulating(CTFPlayer* pEntity);
 	void TrackCritEvent(CTFPlayer* pEntity, CTFWeaponBase* pWeapon, bool bCrit);
-	bool IsTickbaseAbusing(CTFPlayer* pEntity);
-	bool IsSpeedhacking(CTFPlayer* pEntity);
 
 	void Infract(CTFPlayer* pEntity, const char* sReason);
 

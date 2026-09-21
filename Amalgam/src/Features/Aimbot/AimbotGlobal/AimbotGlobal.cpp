@@ -5,7 +5,7 @@
 #include "../../Misc/NamedPipe/NamedPipe.h"
 #include "../../Ticks/Ticks.h"
 #include "../../EnginePrediction/EnginePrediction.h"
-#include "../../NavBot/NavBotJobs/NavBotJobs.h"
+#include "../../NavBot/Jobs/NavBotJobs.h"
 #include "../../Followbot/Followbot.h"
 #include "../AutoHeal/AutoHeal.h"
 
@@ -429,11 +429,6 @@ bool CAimbotGlobal::ShouldAim()
 
 bool CAimbotGlobal::ShouldHoldAttack(CTFWeaponBase* pWeapon)
 {
-	// never latch attack on zoom-locked rifles: they are not automatic, and latching only
-	// dry-fires them (machina sparkle while unscoped or during auto-rezoom)
-	if (SDK::AttribHookValue(0, "sniper_only_fire_zoomed", pWeapon))
-		return false;
-
 	switch (Vars::Aimbot::General::AimHoldsFire.Value)
 	{
 	case Vars::Aimbot::General::AimHoldsFireEnum::MinigunOnly:

@@ -2,7 +2,7 @@
 
 #include "../../Core/Core.h"
 #include "../ImGui/Menu/Menu.h"
-#include "../NavBot/NavEngine/NavEngine.h"
+#include "../NavBot/NavEngine.h"
 #include "../Configs/Configs.h"
 #include "../Players/PlayerUtils.h"
 #include "../Misc/AutoItem/AutoItem.h"
@@ -26,7 +26,57 @@
 //};
 //static std::unordered_map<ConVar*, ConVarValues_t> s_mConVarValues = {};
 
+static uint32_t s_uChatCommander = 0;
+
 static std::unordered_map<uint32_t, CommandCallback> s_mCommands = {
+	AddCommand("cat_kill",
+	{
+		I::EngineClient->ClientCmd_Unrestricted(SDK::RandomInt(0, 1) ? "kill" : "explode");
+	})
+	AddCommand("cat_party_givelead",
+	{
+		if (!I::TFPartyClient)
+		{
+			SDK::Output("cat_party_givelead", "TFPartyClient interface unavailable");
+			return;
+		}
+
+		const uint32_t uSenderID = s_uChatCommander;
+		s_uChatCommander = 0;
+		if (!uSenderID)
+		{
+			SDK::Output("Usage:", "cat_party_givelead is a chat command, type it in party/in-game chat");
+			return;
+		}
+
+		auto pParty = I::TFPartyClient->GetParty();
+		if (!pParty || pParty->GetNumMembers() < 2)
+		{
+			SDK::Output("cat_party_givelead", "Local player is not in a party");
+			return;
+		}
+
+		if (!I::TFPartyClient->BIsLocalPlayerLeader())
+		{
+			SDK::Output("cat_party_givelead", "Local player does not hold party leadership");
+			return;
+		}
+
+		if (!H::Entities.InParty(uSenderID))
+		{
+			SDK::Output("cat_party_givelead", "Sender is not in the local player's party");
+			return;
+		}
+
+		const uint64_t uSteamID64 = 0x0110000100000000ULL | uSenderID;
+		if (!I::TFPartyClient->PromoteToLeader(uSteamID64))
+		{
+			SDK::Output("cat_party_givelead", "Failed to send promote request");
+			return;
+		}
+
+		SDK::Output("cat_party_givelead", std::format("Gave party leadership to {}", uSteamID64).c_str());
+	})
 	AddCommand("cat_setcvar",
 	{
 		if (vArgs.size() < 2)
@@ -345,6 +395,58 @@ static std::unordered_map<uint32_t, CommandCallback> s_mCommands = {
 	{
 		F::Misc.LockItemAchievements();
 	})
+	AddCommand("cat_mvm_fix",
+	{
+		F::Misc.MvMFix();
+	})
+	AddCommand("cat_mvm_quit",
+	{
+		if (I::TFGCClientSystem)
+			I::TFGCClientSystem->AbandonCurrentMatch();
+
+		I::EngineClient->ClientCmd_Unrestricted("disconnect");
+		SDK::Output("cat_mvm_quit", "Abandoned match and disconnected.");
+	})
+	AddCommand("cat_mvm_tele",
+	{
+		auto pLocal = H::Entities.GetLocal();
+		if (!pLocal || !pLocal->IsAlive())
+		{
+			SDK::Output("cat_mvm_tele", "Local player unavailable");
+			return;
+		}
+
+		CBaseObject* pBest = nullptr;
+		float flBestDist = FLT_MAX;
+		for (auto pEntity : H::Entities.GetGroup(EntityEnum::BuildingTeam))
+		{
+			if (!pEntity || pEntity->IsDormant() || pEntity->GetClassID() != ETFClassID::CObjectTeleporter)
+				continue;
+
+			auto pTeleporter = pEntity->As<CObjectTeleporter>();
+			if (pTeleporter->m_iObjectMode() != 0 || pTeleporter->m_bPlacing() || pTeleporter->m_bCarried() || pTeleporter->m_bDisabled())
+				continue;
+
+			const float flDist = pLocal->GetAbsOrigin().DistToSqr(pTeleporter->GetAbsOrigin());
+			if (flDist >= flBestDist)
+				continue;
+
+			flBestDist = flDist;
+			pBest = pTeleporter;
+		}
+
+		if (!pBest || !F::NavEngine.NavTo(pBest->GetAbsOrigin()))
+		{
+			SDK::Output("cat_mvm_tele", "No reachable teleporter entrance found");
+			return;
+		}
+
+		SDK::Output("cat_mvm_tele", "Pathing to closest teleporter entrance");
+	})
+	AddCommand("cat_mvm_rent",
+	{
+		F::AutoItem.MvmRent();
+	})
 #ifdef DEBUG_UNI
 	AddCommand("cat_uni",
 	{
@@ -387,4 +489,92 @@ bool CCommands::Run(const char* sCmd, std::deque<const char*>& vArgs)
 
 	s_mCommands[uHash](vArgs);
 	return true;
+}
+
+static bool IsChatCommandAllowed(uint32_t uHash)
+{
+	switch (uHash)
+	{
+	case FNV1A::Hash32Const("cat_mvm_fix"):
+	case FNV1A::Hash32Const("cat_mvm_quit"):
+	case FNV1A::Hash32Const("cat_mvm_tele"):
+	case FNV1A::Hash32Const("cat_mvm_rent"):
+	case FNV1A::Hash32Const("cat_party_givelead"):
+		return true;
+	default:
+		return false;
+	}
+}
+
+void CCommands::RunChat(const std::string& sMsg, uint32_t uAccountID, bool bPartyChat)
+{
+	if (!Vars::Misc::MannVsMachine::ChatCommands::Mode.Value || sMsg.empty())
+		return;
+
+	std::string sClean;
+	for (char c : sMsg)
+	{
+		if (static_cast<unsigned char>(c) >= ' ') // strip color codes
+			sClean += c;
+	}
+
+	const size_t uStart = sClean.find_first_not_of(' ');
+	if (uStart == std::string::npos)
+		return;
+	sClean.erase(0, uStart);
+
+	if (!sClean.empty() && (sClean.front() == '!' || sClean.front() == '/'))
+		sClean.erase(0, 1);
+
+	std::vector<std::string> vTokens;
+	for (size_t uPos = 0; uPos < sClean.size();)
+	{
+		size_t uEnd = sClean.find(' ', uPos);
+		if (uEnd == std::string::npos)
+			uEnd = sClean.size();
+		if (uEnd > uPos)
+			vTokens.push_back(sClean.substr(uPos, uEnd - uPos));
+		uPos = uEnd + 1;
+	}
+
+	if (vTokens.empty())
+		return;
+
+	std::string& sCmd = vTokens[0];
+	std::transform(sCmd.begin(), sCmd.end(), sCmd.begin(), ::tolower);
+
+	const uint32_t uHash = FNV1A::Hash32(sCmd.c_str());
+	if (!IsChatCommandAllowed(uHash))
+		return;
+
+	const uint32_t uLocalID = H::Entities.GetLocalAccountID();
+	bool bAllowed = uLocalID && uAccountID == uLocalID;
+	if (!bAllowed)
+	{
+		switch (Vars::Misc::MannVsMachine::ChatCommands::Mode.Value)
+		{
+		case Vars::Misc::MannVsMachine::ChatCommands::ModeEnum::Party:
+			bAllowed = bPartyChat || H::Entities.InParty(uAccountID);
+			break;
+		case Vars::Misc::MannVsMachine::ChatCommands::ModeEnum::Friends:
+			bAllowed = H::Entities.IsFriend(uAccountID);
+			break;
+		case Vars::Misc::MannVsMachine::ChatCommands::ModeEnum::CustomTag:
+		{
+			const int iTag = Vars::Misc::MannVsMachine::ChatCommands::Tag.Value;
+			bAllowed = uAccountID && F::PlayerUtils.HasTag(uAccountID, iTag);
+			break;
+		}
+		}
+	}
+
+	if (!bAllowed)
+		return;
+
+	std::deque<const char*> vArgs;
+	for (size_t i = 1; i < vTokens.size(); i++)
+		vArgs.push_back(vTokens[i].c_str());
+
+	s_uChatCommander = uAccountID;
+	Run(sCmd.c_str(), vArgs);
 }

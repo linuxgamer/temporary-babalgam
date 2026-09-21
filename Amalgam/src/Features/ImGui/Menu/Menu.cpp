@@ -7,31 +7,24 @@
 #include "../../Configs/Configs.h"
 #include "../../Binds/Binds.h"
 #include "../../Visuals/Groups/Groups.h"
-#include "../../Visuals/SkinChanger/SkinChanger.h"
-#include "../../Visuals/HatChanger/HatChanger.h"
 #include "../../Players/PlayerUtils.h"
 #include "../../Players/SteamProfileCache.h"
 #include "../../Spectate/Spectate.h"
 #include "../../Resolver/Resolver.h"
 #include "../../Visuals/Visuals.h"
+#include "../../Visuals/SkinChanger/SkinChanger.h"
 #include "../../Misc/Misc.h"
+#include "../../Recorder/Recorder.h"
+#include "../../Misc/AutoQueue/MvmQueue.h"
+#if __has_include("../../Misc/ProfileStalker/ProfileStalker.h")
+#include "../../Misc/ProfileStalker/ProfileStalker.h"
+#endif
 #include "../../Output/Output.h"
 #include "../../World/World.h"
 #include "../../Simulation/ProjectileSimulation/ProjectileSimulation.h"
 #include "../../AntiCheatCompatibility/AntiCheatCompatibility.h"
 
 #include <wrl/client.h>
-
-struct MenuHatNameEntry_t
-{
-	int id;
-	const char* name;
-};
-
-static const MenuHatNameEntry_t s_MenuHatNameTable[] =
-{
-#include "../../Visuals/HatChanger/HatNames.inl"
-};
 
 struct CachedAvatar_t
 {
@@ -296,14 +289,15 @@ void CMenu::DrawMenu()
 		float flSubTabHeight = H::Draw.Scale(34);
 		const std::vector<std::vector<const char*>> vSubTabs = {
 			{ "GENERAL", "DRAW" },
-			{ "ESP", "MISC##", "MENU", "SKINCHANGER" },
+			{ "ESP", "MISC##", "MENU" },
 			{ "MAIN" },
-			{ "MOVEMENT", "MAIN", "BOT", "QUEUEING" },
+			{ "MAIN", "BOT", "QUEUEING" },
 			{ "CHEATERS", "DETECTION" },
 			{ "PLAYERLIST", "SETTINGS##", "OUTPUT" },
 			{ "CONFIG", "BINDS", "MATERIALS", "MISC##" }
 		};
 		static int iTab = 0, iAimbotTab = 0, iVisualsTab = 0, iHvHTab = 0, iMiscTab = 0, iAnticheatTab = 0, iLogsTab = 0, iSettingsTab = 0;
+		iTab = std::clamp(iTab, 0, int(vSubTabs.size() - 1));
 		bool bHasSubTabs = !vSubTabs[iTab].empty();
 		float flHeaderHeight = flNavHeight + (bHasSubTabs ? flSubTabHeight : 0.f);
 		float flBrandWidth = H::Draw.Scale(140);
@@ -609,7 +603,7 @@ void CMenu::MenuAimbot(int iTab)
 					FDropdown(Vars::Aimbot::Projectile::SplashPrediction, FDropdownEnum::Right);
 					FDropdown(Vars::Aimbot::Projectile::Hitboxes, FDropdownEnum::Left);
 					FDropdown(Vars::Aimbot::Projectile::Modifiers, FDropdownEnum::Right);
-					FSlider(Vars::Aimbot::Projectile::MaxSimulationTime, FSliderEnum::Left);
+					FSlider(Vars::Aimbot::Projectile::MaxSimulationTime, FSliderEnum::Left); FTooltip("Longer = less accuracy, shorter = less shoot candidates");
 					PushTransparent(!Vars::Aimbot::Projectile::StrafePrediction.Value);
 					{
 						FSlider(Vars::Aimbot::Projectile::HitChance, FSliderEnum::Right);
@@ -789,7 +783,7 @@ void CMenu::MenuVisuals(int iTab)
 		{
 			static std::string sStaticName;
 
-			PushDisabled(F::Groups.m_vGroups.size() >= sizeof(int) * 8); // for active groups flags
+			PushDisabled(F::Groups.m_vGroups.size() >= MAX_GROUPS); // for active groups flags
 			{
 				FSDropdown("Name", &sStaticName, {}, FDropdownEnum::Left | FSDropdownEnum::AutoUpdate, -H::Draw.Unscale(FCalcTextSize("CREATE").x) - 36);
 
@@ -905,7 +899,7 @@ void CMenu::MenuVisuals(int iTab)
 							tGroup.m_sName = sInput;
 					}
 
-					PushDisabled(F::Groups.m_vGroups.size() >= sizeof(int) * 8);
+					PushDisabled(F::Groups.m_vGroups.size() >= MAX_GROUPS);
 					{
 						bDuplicate = FButton("Duplicate");
 					}
@@ -1305,61 +1299,6 @@ void CMenu::MenuVisuals(int iTab)
 						}
 					} EndSection();
 				}
-				if (Section("Weather"))
-				{
-					FToggle(Vars::Visuals::Weather::Fog, FToggleEnum::Left);
-					FColorPicker(Vars::Visuals::Weather::FogColor, FColorPickerEnum::Right);
-					FSlider(Vars::Visuals::Weather::FogStart, FSliderEnum::Left);
-					FSlider(Vars::Visuals::Weather::FogEnd, FSliderEnum::Right);
-					FSlider(Vars::Visuals::Weather::FogDensity);
-					FToggle(Vars::Visuals::Weather::FogLinkSkybox);
-					PushTransparent(!Vars::Visuals::Weather::FogLinkSkybox.Value);
-					{
-						FSlider(Vars::Visuals::Weather::FogSkyStart, FSliderEnum::Left);
-						FSlider(Vars::Visuals::Weather::FogSkyEnd, FSliderEnum::Right);
-						FSlider(Vars::Visuals::Weather::FogSkyDensity);
-					}
-					PopTransparent();
-					FDropdown(Vars::Visuals::Weather::Precipitation, FDropdownEnum::None, -10);
-					PushTransparent(Vars::Visuals::Weather::Precipitation.Value != Vars::Visuals::Weather::PrecipitationEnum::Rain);
-					{
-						FSlider(Vars::Visuals::Weather::RainAlpha, FSliderEnum::Left);
-						FSlider(Vars::Visuals::Weather::RainSpeed, FSliderEnum::Right);
-						FSlider(Vars::Visuals::Weather::RainWidth, FSliderEnum::Left);
-						FSlider(Vars::Visuals::Weather::RainLength, FSliderEnum::Right);
-						FSlider(Vars::Visuals::Weather::RainRadius, FSliderEnum::Left);
-						FSlider(Vars::Visuals::Weather::RainSideVel, FSliderEnum::Right);
-					}
-					PopTransparent();
-					PushTransparent(Vars::Visuals::Weather::Precipitation.Value != Vars::Visuals::Weather::PrecipitationEnum::Snow);
-					{
-						FSlider(Vars::Visuals::Weather::SnowAlpha, FSliderEnum::Left);
-						FSlider(Vars::Visuals::Weather::SnowSpeed, FSliderEnum::Right);
-						FSlider(Vars::Visuals::Weather::SnowWidth, FSliderEnum::Left);
-						FSlider(Vars::Visuals::Weather::SnowLength, FSliderEnum::Right);
-						FSlider(Vars::Visuals::Weather::SnowRadius, FSliderEnum::Left);
-						FSlider(Vars::Visuals::Weather::SnowSideVel, FSliderEnum::Right);
-						FSlider(Vars::Visuals::Weather::SnowDensity);
-					}
-					PopTransparent();
-					FToggle(Vars::Visuals::Weather::FlipWorld);
-				} EndSection();
-				if (Section("Fake POV"))
-				{
-					FToggle(Vars::Visuals::FakePOV::Enabled, FToggleEnum::Left);
-					FDropdown(Vars::Visuals::FakePOV::Mode, FDropdownEnum::Right);
-					FSlider(Vars::Visuals::FakePOV::SmoothSpeed, FSliderEnum::Left);
-					PushTransparent(Vars::Visuals::FakePOV::Mode.Value != Vars::Visuals::FakePOV::ModeEnum::Spinning);
-					{
-						FSlider(Vars::Visuals::FakePOV::SpinSpeed, FSliderEnum::Right);
-					}
-					PopTransparent();
-					FToggle(Vars::Visuals::FakePOV::SnapView, FToggleEnum::Left);
-					FToggle(Vars::Visuals::FakePOV::Arrow, FToggleEnum::Right);
-					FColorPicker(Vars::Visuals::FakePOV::ArrowColor);
-					FSlider(Vars::Visuals::FakePOV::ArrowSize, FSliderEnum::Left);
-					FSlider(Vars::Visuals::FakePOV::ArrowDist, FSliderEnum::Right);
-				} EndSection();
 			}
 			EndTable();
 		}
@@ -1397,6 +1336,33 @@ void CMenu::MenuVisuals(int iTab)
 					FToggle(Vars::Visuals::UI::ScoreboardUtility, FToggleEnum::Right);
 					FToggle(Vars::Visuals::UI::ScoreboardColors, FToggleEnum::Left);
 					FToggle(Vars::Visuals::UI::CleanScreenshots, FToggleEnum::Right);
+				} EndSection();
+				if (Section("Skins"))
+				{
+					FToggle(Vars::Visuals::SkinChanger::Enabled, FToggleEnum::Left);
+
+					auto pWeapon = H::Entities.GetWeapon();
+					const int iKey = pWeapon ? F::SkinChanger.Key(pWeapon->m_iItemDefinitionIndex()) : -1;
+					static std::string sWeaponLabel;
+					sWeaponLabel = pWeapon ? std::format("Editing {}", F::SkinChanger.WeaponLabel(iKey)) : "Hold a weapon to edit skins";
+					FText(sWeaponLabel.c_str());
+
+					PushDisabled(!pWeapon);
+					Skin_t tSkin = F::SkinChanger.Get(iKey);
+					std::vector<const char*> vKitNames;
+					std::vector<int> vKitIds;
+					F::SkinChanger.GetKits(iKey, vKitNames, vKitIds);
+					FDropdown("Paint kit", &tSkin.iPaintKit, vKitNames, vKitIds);
+					FToggle("Australium", &tSkin.bAustralium, FToggleEnum::Left);
+					FToggle("Festive", &tSkin.bFestive, FToggleEnum::Right);
+					FSlider("Killstreak", &tSkin.iKillstreak, 0, 3, 1, "%i", FSliderEnum::Clamp);
+					static const std::vector<const char*> vSheen = { "Off", "Team shine", "Deadly daffodil", "Manndarin", "Mean green", "Agonizing emerald", "Villainous violet", "Hot rod" };
+					static const std::vector<const char*> vUnusual = { "Off", "Hot", "Isotope", "Cool", "Energy orb" };
+					FDropdown("Sheen", &tSkin.iSheen, vSheen);
+					FDropdown("Weapon unusual", &tSkin.iUnusual, vUnusual);
+					if (pWeapon)
+						F::SkinChanger.Set(iKey, tSkin);
+					PopDisabled();
 				} EndSection();
 				if (Section("Thirdperson", 8))
 				{
@@ -1564,10 +1530,6 @@ void CMenu::MenuVisuals(int iTab)
 				if (Section("Other"))
 				{
 					FToggle(Vars::Visuals::Other::KillstreakWeapons);
-					FDropdown(Vars::Visuals::Other::SheenColor, FDropdownEnum::Right, -10);
-					PushTransparent(Vars::Visuals::Other::SheenColor.Value != Vars::Visuals::Other::SheenColorEnum::Custom);
-					FColorPicker(Vars::Colors::KillstreakSheen, FColorPickerEnum::SameLine | FColorPickerEnum::NoTooltip, {}, { H::Draw.Scale(10), H::Draw.Scale(40) });
-					PopTransparent();
 				} EndSection();
 			}
 			EndTable();
@@ -1628,600 +1590,6 @@ void CMenu::MenuVisuals(int iTab)
 					}
 					EndSection();
 				}
-			}
-			EndTable();
-		}
-		break;
-	}
-	// SkinChanger
-	case 4:
-	{
-		if (BeginTable("SkinTable", 2))
-		{
-			// Left column: weapon + attribute inputs
-			TableNextColumn();
-			{
-				static int   nTargetWep = 0;
-				static int   nPaintKit  = 0;
-				static float flWear     = 0.2f;
-				static bool  bFestivize = false;
-				static bool  bFestive   = false;
-				static bool  bAustralium = false;
-				static int   nKsTier    = 0;
-				static int   nKsSheen   = 0;
-				static int   nKsKiller  = 0;
-				static int   nUnusualEffect = 0;
-
-				if (Section("Weapon"))
-				{
-					auto pLocal = H::Entities.GetLocal();
-					if (pLocal)
-					{
-						if (BeginChild("##slotscroll", ImVec2(-1.f, H::Draw.Scale(64.f)), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar))
-						{
-							for (int i = 0; i < 5; i++)
-							{
-								auto pWep = pLocal->GetWeaponFromSlot(i);
-								if (!pWep)
-									continue;
-								int nDef = pWep->m_iItemDefinitionIndex();
-								std::string sName = SDK::ConvertWideToUTF8(pWep->GetWeaponName());
-								std::string sLabel = sName.empty() ? std::format("Slot {} ({})", i, nDef) : std::format("{} ({})", sName, nDef);
-								if (i > 0)
-									SameLine();
-								if (FButton(sLabel.c_str(), FButtonEnum::Fit))
-									nTargetWep = nDef;
-							}
-						}
-						EndChild();
-					}
-					InputInt("##wepidx", &nTargetWep, 0);
-					if (IsItemHovered(ImGuiHoveredFlags_DelayShort))
-						SetTooltip("Weapon definition index");
-					nTargetWep = std::max(nTargetWep, 0);
-				} EndSection();
-
-				if (Section("Warpaint"))
-				{
-					static char szPkFilter[64] = "";
-					SetNextItemWidth(-1.f);
-					InputTextWithHint("##pkfilter", "Search warpaints...", szPkFilter, sizeof(szPkFilter));
-
-					int nPkCount = 0;
-					const PaintkitEntry* pPks = GetPaintkitEntries(nPkCount);
-
-					auto ciContains = [](const char* hay, const char* needle) -> bool
-					{
-						if (!needle || !needle[0])
-							return true;
-						for (; *hay; ++hay)
-						{
-							const char* h = hay, * n = needle;
-							while (*h && *n && (tolower((unsigned char)*h) == tolower((unsigned char)*n)))
-								++h, ++n;
-							if (!*n)
-								return true;
-						}
-						return false;
-					};
-
-					SetNextItemWidth(-1.f);
-					if (BeginListBox("##pklist", ImVec2(0.f, H::Draw.Scale(100.f))))
-					{
-						for (int i = 0; i < nPkCount; i++)
-						{
-							if (!ciContains(pPks[i].name, szPkFilter))
-								continue;
-							const bool bSel = (nPaintKit == pPks[i].id);
-							char buf[80];
-							snprintf(buf, sizeof(buf), "%s  [%d]", pPks[i].name, pPks[i].id);
-							if (Selectable(buf, bSel))
-								nPaintKit = pPks[i].id;
-							if (bSel)
-								SetItemDefaultFocus();
-						}
-						EndListBox();
-					}
-
-					InputInt("##pkmanual", &nPaintKit, 0);
-					if (IsItemHovered(ImGuiHoveredFlags_DelayShort))
-						SetTooltip("Manual paint kit ID");
-					nPaintKit = std::max(nPaintKit, 0);
-
-					FSlider("Wear##sc", &flWear, 0.f, 1.f, 0.01f, "%.2f");
-				} EndSection();
-
-				if (Section("Reskin"))
-				{
-					int nRedirected = nTargetWep;
-					CSkinChanger::RedirectIndex(nRedirected);
-					int nReskinCount = 0;
-					const ReskinEntry* pReskins = GetReskinOptions(nRedirected, nReskinCount);
-					const int nCurrent = F::SkinChanger.GetReskin(nTargetWep);
-
-					FText("Reskins (render correctly)");
-					if (nReskinCount == 0)
-						TextDisabled("None for this weapon - use Custom below.");
-					else
-					{
-						SetNextItemWidth(-1.f);
-						if (BeginListBox("##reskinlist", ImVec2(0.f, H::Draw.Scale(80.f))))
-						{
-							for (int i = 0; i < nReskinCount; i++)
-							{
-								const bool bSel = (nCurrent == pReskins[i].nDefIndex);
-								if (Selectable(pReskins[i].name, bSel))
-									F::SkinChanger.SetReskin(nTargetWep, pReskins[i].nDefIndex);
-								if (bSel)
-									SetItemDefaultFocus();
-							}
-							EndListBox();
-						}
-					}
-
-					Separator();
-					FText("Custom (any weapon)");
-					static int nCustomReskin = 0;
-					InputInt("Reskin def##customreskin", &nCustomReskin, 0);
-					nCustomReskin = std::max(nCustomReskin, 0);
-					if (IsItemHovered(ImGuiHoveredFlags_DelayShort))
-						SetTooltip("Item def index of ANY weapon to use as the model. Different-class weapons may not animate perfectly.");
-					if (FButton("Apply Custom##customreskin", FButtonEnum::Left))
-					{
-						if (nCustomReskin > 0)
-							F::SkinChanger.SetReskin(nTargetWep, nCustomReskin);
-					}
-					if (FButton("Remove Reskin", FButtonEnum::Right))
-						F::SkinChanger.RemoveReskin(nTargetWep);
-					if (nCurrent > 0)
-						FText(std::format("Active: def {}", nCurrent).c_str());
-				} EndSection();
-
-				if (Section("Options"))
-				{
-					FToggle("Festivize##sc", &bFestivize, FToggleEnum::Left);
-					FToggle("Festive##sc", &bFestive, FToggleEnum::Right);
-					FToggle("Australium##sc", &bAustralium);
-
-					FDropdown("KS Tier##sc", &nKsTier, { "None", "Basic", "Specialized", "Professional" });
-					nKsTier = std::clamp(nKsTier, 0, 3);
-
-					if (nKsTier >= 2)
-					{
-						FDropdown("Sheen##sc", &nKsSheen,
-							{ "None", "Team Shine", "Deadly Daffodil", "Manndarin",
-							  "Mean Green", "Agonizing Emerald", "Villainous Violet", "Hot Rod" });
-					}
-
-					if (nKsTier == 3)
-					{
-						static const struct { int id; const char* name; } s_KsKillerEntries[] = {
-							{ 0,    "None"                },
-							{ 2002, "Fire Horns"          },
-							{ 2003, "Cerebral Discharge"  },
-							{ 2004, "Tornado"             },
-							{ 2005, "Flames"              },
-							{ 2006, "Singularity"         },
-							{ 2007, "Incinerator"         },
-							{ 2008, "Lightning Bolt"      },
-						};
-						constexpr int nKillerCount = 8;
-						int nSelKiller = 0;
-						for (int i = 0; i < nKillerCount; i++)
-							if (s_KsKillerEntries[i].id == nKsKiller) { nSelKiller = i; break; }
-
-						SetNextItemWidth(-1.f);
-						if (BeginCombo("Killstreaker##sc", s_KsKillerEntries[nSelKiller].name))
-						{
-							for (int i = 0; i < nKillerCount; i++)
-							{
-								if (Selectable(s_KsKillerEntries[i].name, nSelKiller == i))
-									nKsKiller = s_KsKillerEntries[i].id;
-								if (nSelKiller == i)
-									SetItemDefaultFocus();
-							}
-							EndCombo();
-						}
-					}
-				} EndSection();
-
-				if (Section("Unusual"))
-				{
-					// TF2 only ships a handful of particle systems that actually attach
-					// to a weapon model correctly - the ~100+ entries in the cosmetic
-					// unusual-effect table (GetUnusualEffectEntries) are hat attach
-					// points and will not render right on a weapon. This is a separate,
-					// curated weapon-unusual list, not the hat one.
-					static const struct { int id; const char* name; } s_WeaponUnusualEntries[] = {
-						{ 0,   "None" },
-						{ 4,   "Community Sparkle" },
-						{ 701, "Hot" },
-						{ 702, "Isotope" },
-						{ 703, "Cool" },
-						{ 704, "Energy Orb" },
-					};
-					constexpr int nWeaponUnusualCount = static_cast<int>(std::size(s_WeaponUnusualEntries));
-					int nSelUnusual = 0;
-					for (int i = 0; i < nWeaponUnusualCount; i++)
-						if (s_WeaponUnusualEntries[i].id == nUnusualEffect) { nSelUnusual = i; break; }
-
-					FText("Unusual effect (weapon-valid particles only).");
-					SetNextItemWidth(-1.f);
-					if (BeginCombo("##scunusualcombo", s_WeaponUnusualEntries[nSelUnusual].name))
-					{
-						for (int i = 0; i < nWeaponUnusualCount; i++)
-						{
-							if (Selectable(s_WeaponUnusualEntries[i].name, nSelUnusual == i))
-								nUnusualEffect = s_WeaponUnusualEntries[i].id;
-							if (nSelUnusual == i)
-								SetItemDefaultFocus();
-						}
-						EndCombo();
-					}
-				} EndSection();
-
-				if (FButton("Apply", FButtonEnum::Left))
-				{
-					if (nPaintKit)
-					{
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::PaintkitProtoDef,    static_cast<float>(nPaintKit));
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::PaintkitSeedLo,      0.f);
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::PaintkitSeedHi,      0.f);
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::WeaponAllowInspect,  1.f);
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::SetWear,             flWear);
-					}
-					if (bFestivize)
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::IsFestivized, 1.f);
-					else
-						F::SkinChanger.RemoveAttribute(nTargetWep, SkinAttr::IsFestivized);
-
-					if (bFestive)
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::IsFestive, 1.f);
-					else
-						F::SkinChanger.RemoveAttribute(nTargetWep, SkinAttr::IsFestive);
-
-					if (bAustralium)
-					{
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::IsAustralium, 1.f);
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::ItemStyleOverride, 1.f);
-					}
-					else
-					{
-						F::SkinChanger.RemoveAttribute(nTargetWep, SkinAttr::IsAustralium);
-						F::SkinChanger.RemoveAttribute(nTargetWep, SkinAttr::ItemStyleOverride);
-					}
-
-					if (nKsTier > 0)
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::KillstreakTier, static_cast<float>(nKsTier));
-					else
-						F::SkinChanger.RemoveAttribute(nTargetWep, SkinAttr::KillstreakTier);
-
-					if (nKsTier >= 2 && nKsSheen > 0)
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::KillstreakSheen, static_cast<float>(nKsSheen));
-					else
-						F::SkinChanger.RemoveAttribute(nTargetWep, SkinAttr::KillstreakSheen);
-
-					if (nKsTier == 3 && nKsKiller > 0)
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::KillstreakEffect, static_cast<float>(nKsKiller));
-					else
-						F::SkinChanger.RemoveAttribute(nTargetWep, SkinAttr::KillstreakEffect);
-
-					if (nUnusualEffect > 0)
-					{
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::SetParticle, static_cast<float>(nUnusualEffect));
-						F::SkinChanger.SetAttribute(nTargetWep, SkinAttr::SetParticleStatic, static_cast<float>(nUnusualEffect));
-					}
-					else
-					{
-						F::SkinChanger.RemoveAttribute(nTargetWep, SkinAttr::SetParticle);
-						F::SkinChanger.RemoveAttribute(nTargetWep, SkinAttr::SetParticleStatic);
-					}
-
-					nPaintKit    = 0;
-					flWear       = 0.2f;
-					bFestivize   = false;
-					bFestive     = false;
-					bAustralium  = false;
-					nKsTier      = 0;
-					nKsSheen     = 0;
-					nKsKiller    = 0;
-					nUnusualEffect = 0;
-				}
-				if (FButton("Clear", FButtonEnum::Right))
-					F::SkinChanger.ClearWeapon(nTargetWep);
-			}
-
-			// Right column: save / load
-			TableNextColumn();
-			{
-				if (Section("Skins"))
-				{
-					if (FButton("Save Skins", FButtonEnum::Left))
-						F::SkinChanger.Save();
-					if (FButton("Load Skins", FButtonEnum::Right))
-						F::SkinChanger.Load();
-					if (FButton("Clear Active Weapon"))
-					{
-						auto pLocal = H::Entities.GetLocal();
-						if (pLocal)
-						{
-							if (auto pWeapon = pLocal->m_hActiveWeapon()->As<CTFWeaponBase>())
-								F::SkinChanger.ClearWeapon(pWeapon->m_iItemDefinitionIndex());
-						}
-					}
-					if (FButton("Clear Reskins"))
-						F::SkinChanger.ClearAllReskins();
-				} EndSection();
-
-				auto HelpMarker = [](const char* szDesc)
-				{
-					SameLine();
-					TextDisabled("(?)");
-					if (IsItemHovered(ImGuiHoveredFlags_DelayShort))
-						SetTooltip("%s", szDesc);
-				};
-				auto HatName = [](int nDef) -> const char*
-				{
-					for (const auto& tHat : s_MenuHatNameTable)
-						if (tHat.id == nDef) return tHat.name;
-					return "Unknown hat";
-				};
-
-				if (Section("Hats: Wear (no equip)"))
-				{
-					FText("Wear any hat with nothing equipped.");
-					HelpMarker("Drawn client-side, bonemerged to your player.\nVisible in thirdperson, taunts, killcam and mirrors.\nOnly you see it.");
-
-					const auto& vStandalone = F::HatChanger.GetStandaloneHats();
-					if (vStandalone.empty())
-						TextDisabled("No hats worn.");
-					else
-					{
-						int nRemove = -1;
-						for (int nDef : vStandalone)
-						{
-							if (FButton(std::format("X  {} ({})##sa{}", HatName(nDef), nDef, nDef).c_str()))
-								nRemove = nDef;
-						}
-						if (nRemove >= 0)
-							F::HatChanger.RemoveStandaloneHat(nRemove);
-					}
-
-					Separator();
-					static int nStandaloneDef = 0;
-					static char szSAFilter[96] = {};
-					SetNextItemWidth(-1.f);
-					InputTextWithHint("##sahcsearch", "Search hats by name or id...", szSAFilter, IM_ARRAYSIZE(szSAFilter));
-					if (BeginListBox("##sahclist", { 0, H::Draw.Scale(150) }))
-					{
-						int nShown = 0;
-						for (const auto& tHat : s_MenuHatNameTable)
-						{
-							const std::string sDef = std::to_string(tHat.id);
-							const bool bMatch = !szSAFilter[0]
-								|| ImStristr(tHat.name, nullptr, szSAFilter, nullptr)
-								|| ImStristr(sDef.c_str(), nullptr, szSAFilter, nullptr);
-							if (!bMatch)
-								continue;
-
-							const std::string sLabel = std::format("{} - {}", tHat.id, tHat.name);
-							if (Selectable(sLabel.c_str(), nStandaloneDef == tHat.id))
-								nStandaloneDef = tHat.id;
-
-							if (++nShown >= 500)
-							{
-								TextDisabled("... too many matches, refine search");
-								break;
-							}
-						}
-						EndListBox();
-					}
-					if (FButton("Wear Hat", FButtonEnum::Left))
-						F::HatChanger.WearStandaloneHat(nStandaloneDef);
-					if (FButton("Remove All", FButtonEnum::Right))
-						F::HatChanger.ClearStandaloneHats();
-				}
-				EndSection();
-
-				if (Section("Hats: Override Equipped"))
-				{
-					FText("Replace a cosmetic you already wear.");
-					HelpMarker("Swaps an equipped item's model and effect.\nAlso updates the first-person/HUD preview.\nNeeds at least one cosmetic equipped to target.");
-
-					const auto& vSeen = F::HatChanger.m_vLastSeen;
-					if (vSeen.empty())
-						TextDisabled("Nothing equipped to override.\nUse \"Wear (no equip)\" above instead.");
-					else
-					{
-						Text("Equipped items");
-						for (auto& [nSlot, nOrigDef] : vSeen)
-						{
-							const int nCurOverride = F::HatChanger.GetOverride(nOrigDef);
-							std::string sLabel = std::format("Slot {} (def {}){}",
-								nSlot, nOrigDef,
-								nCurOverride >= 0 ? std::format("  ->  {} ({})", HatName(nCurOverride), nCurOverride) : "");
-							FText(sLabel.c_str());
-						}
-
-						Separator();
-						static int nTargetOrig = 0, nNewDef = 0, nHatUnusual = 0;
-						static char szHatFilter[96] = {};
-						static char szHatUnusualFilter[64] = {};
-						InputInt("Target item def##hc", &nTargetOrig, 0);
-						if (IsItemHovered(ImGuiHoveredFlags_DelayShort))
-							SetTooltip("Def index of the equipped item to replace (see the list above).");
-						static int nLastOrig = -1;
-						if (nTargetOrig != nLastOrig)
-						{
-							nHatUnusual = F::HatChanger.GetUnusual(nTargetOrig);
-							nLastOrig = nTargetOrig;
-						}
-
-						Separator();
-						Text("Replacement hat");
-						InputInt("New hat def##hc", &nNewDef, 0);
-						InputTextWithHint("##hcsearch", "Search hats by name or id...", szHatFilter, IM_ARRAYSIZE(szHatFilter));
-						if (BeginListBox("##hclist", { 0, H::Draw.Scale(150) }))
-						{
-							int nShown = 0;
-							for (const auto& tHat : s_MenuHatNameTable)
-							{
-								const std::string sDef = std::to_string(tHat.id);
-								const bool bMatch = !szHatFilter[0]
-									|| ImStristr(tHat.name, nullptr, szHatFilter, nullptr)
-									|| ImStristr(sDef.c_str(), nullptr, szHatFilter, nullptr);
-								if (!bMatch)
-									continue;
-
-								const std::string sLabel = std::format("{} - {}", tHat.id, tHat.name);
-								if (Selectable(sLabel.c_str(), nNewDef == tHat.id))
-									nNewDef = tHat.id;
-
-								if (++nShown >= 500)
-								{
-									TextDisabled("... too many matches, refine search");
-									break;
-								}
-							}
-							EndListBox();
-						}
-
-						Separator();
-						Text("Unusual effect (optional)");
-						InputInt("Effect id##hc", &nHatUnusual, 0);
-						InputTextWithHint("##hcunusualsearch", "Search effects by name or id...", szHatUnusualFilter, IM_ARRAYSIZE(szHatUnusualFilter));
-						if (BeginListBox("##hcunusuallist", { 0, H::Draw.Scale(120) }))
-						{
-							int nUnusualCount = 0;
-							const UnusualEffectEntry* pUnusual = GetUnusualEffectEntries(nUnusualCount);
-							int nShown = 0;
-							for (int i = 0; i < nUnusualCount; i++)
-							{
-								char idBuf[32];
-								snprintf(idBuf, sizeof(idBuf), "%d", pUnusual[i].id);
-								const bool bMatch = !szHatUnusualFilter[0]
-									|| ImStristr(pUnusual[i].name, nullptr, szHatUnusualFilter, nullptr)
-									|| ImStristr(idBuf, nullptr, szHatUnusualFilter, nullptr);
-								if (!bMatch)
-									continue;
-
-								char label[256];
-								snprintf(label, sizeof(label), "%s [%d]", pUnusual[i].name, pUnusual[i].id);
-								if (Selectable(label, nHatUnusual == pUnusual[i].id))
-									nHatUnusual = pUnusual[i].id;
-
-								if (++nShown >= 350)
-								{
-									TextDisabled("... too many matches, refine search");
-									break;
-								}
-							}
-							EndListBox();
-						}
-
-						if (FButton("Apply", FButtonEnum::Left))
-						{
-							F::HatChanger.SetOverride(nTargetOrig, nNewDef);
-							if (nHatUnusual > 0)
-								F::HatChanger.SetUnusual(nTargetOrig, nHatUnusual);
-						}
-						if (FButton("Clear", FButtonEnum::Right))
-						{
-							F::HatChanger.ClearOverride(nTargetOrig);
-							F::HatChanger.ClearUnusual(nTargetOrig);
-						}
-						if (FButton("Clear Unusual Only##hc"))
-							F::HatChanger.ClearUnusual(nTargetOrig);
-
-						Separator();
-						Text("Paint");
-						static const struct { int rgb; int rgb2; const char* name; } s_Paints[] = {
-							{ 0,        0,        "None" },
-							{ 15185211, 15185211, "A Color Similar to Slate" },
-							{ 8154199,  8154199,  "A Deep Commitment to Purple" },
-							{ 12955537, 12955537, "A Distinctive Lack of Hue" },
-							{ 6637376,  6637376,  "A Mann's Mint" },
-							{ 2960676,  2960676,  "After Eight" },
-							{ 8208497,  8208497,  "Aged Moustache Grey" },
-							{ 12073019, 5801378,  "An Air of Debonair" },
-							{ 3100495,  3100495,  "An Extraordinary Abundance of Tinge" },
-							{ 4732984,  4732984,  "Australium Gold" },
-							{ 11049612, 8626083,  "Balaclavas Are Forever" },
-							{ 3329330,  15132390, "Color No. 216-190-216" },
-							{ 1315860,  1315860,  "Dark Salmon Injustice" },
-							{ 6901050,  6901050,  "Drably Olive" },
-							{ 8400928,  2452877,  "Cream Spirit" },
-							{ 12807213, 12091445, "Indubitably Green" },
-							{ 4345659,  4345659,  "Mann Co. Orange" },
-							{ 5322826,  5322826,  "Muskelmannbraun" },
-							{ 14204632, 14204632, "Noble Hatter's Violet" },
-							{ 15308410, 15308410, "Operator's Overalls" },
-							{ 1315860,  1315860,  "Peculiarly Drab Tincture" },
-							{ 6637376,  6637376,  "Pink as Hell" },
-							{ 3874595,  1581885,  "Team Spirit" },
-							{ 8421376,  8421376,  "The Bitter Taste of Defeat and Lime" },
-							{ 15132390, 8208497,  "The Color of a Gentlemann's Business Pants" },
-							{ 15787660, 15787660, "The Value of Teamwork" },
-							{ 8154199,  8154199,  "Waterlogged Lab Coat" },
-							{ 15308410, 15308410, "Ye Olde Rustic Colour" },
-							{ 16738740, 16738740, "Zepheniah's Greed" },
-						};
-						static int nPaintIdx = 0;
-
-						SetNextItemWidth(-1.f);
-						if (BeginCombo("##paintcombo", s_Paints[nPaintIdx].name))
-						{
-							for (int i = 0; i < IM_ARRAYSIZE(s_Paints); i++)
-							{
-								const bool bSel = (nPaintIdx == i);
-								if (s_Paints[i].rgb > 0)
-								{
-									ImVec4 col = ImVec4(
-										((s_Paints[i].rgb >> 16) & 0xFF) / 255.f,
-										((s_Paints[i].rgb >> 8) & 0xFF) / 255.f,
-										(s_Paints[i].rgb & 0xFF) / 255.f,
-										1.0f);
-									ColorButton("##sw", col, ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker, ImVec2(12, 12));
-									SameLine();
-								}
-								if (Selectable(s_Paints[i].name, bSel))
-									nPaintIdx = i;
-								if (bSel)
-									SetItemDefaultFocus();
-							}
-							EndCombo();
-						}
-
-						if (FButton("Apply Paint##hc", FButtonEnum::Left))
-						{
-							if (nPaintIdx > 0)
-								F::HatChanger.SetPaint(nTargetOrig, s_Paints[nPaintIdx].rgb, s_Paints[nPaintIdx].rgb2);
-							else
-								F::HatChanger.ClearPaint(nTargetOrig);
-						}
-						if (FButton("Clear Paint##hc", FButtonEnum::Right))
-							F::HatChanger.ClearPaint(nTargetOrig);
-
-						Separator();
-						bool bManualHudUnusual = F::HatChanger.GetManualHudUnusual();
-						if (Checkbox("Manual HUD unusual fallback##hc", &bManualHudUnusual))
-							F::HatChanger.SetManualHudUnusual(bManualHudUnusual);
-						HelpMarker("Fallback that emits the unusual effect if the normal path does not show it.");
-					}
-				}
-				EndSection();
-
-				if (Section("Hats: Save / Load"))
-				{
-					if (FButton("Save Hats", FButtonEnum::Left))
-						F::HatChanger.Save();
-					if (FButton("Load Hats", FButtonEnum::Right))
-						F::HatChanger.Load();
-					if (FButton("Reset All Hats"))
-						F::HatChanger.ClearAll();
-					HelpMarker("Removes all worn, overridden, unusual and paint settings.");
-				}
-				EndSection();
 			}
 			EndTable();
 		}
@@ -2386,10 +1754,10 @@ void CMenu::MenuMisc(int iTab)
 
 	switch (iTab)
 	{
-	// Movement
+	// Main
 	case 0:
 	{
-		if (BeginTable("MovementTable", 2))
+		if (BeginTable("MiscTable", 2))
 		{
 			/* Column 1 */
 			TableNextColumn();
@@ -2408,10 +1776,8 @@ void CMenu::MenuMisc(int iTab)
 					FColorPicker(Vars::Colors::EdgebugPath, FColorPickerEnum::SameLine, {}, { H::Draw.Scale(10), H::Draw.Scale(40) });
 					FToggle(Vars::Misc::Movement::Bunnyhop, FToggleEnum::Left);
 					FToggle(Vars::Misc::Movement::EdgeJump, FToggleEnum::Right);
-					FToggle(Vars::Misc::Movement::BreakJump, FToggleEnum::Left);
-					FToggle(Vars::Misc::Movement::JumpBug, FToggleEnum::Right); // bind to a hold key to arm it while falling, indicator lives in the menu indicators
-					FToggle(Vars::Misc::Movement::JumpBugSound, FToggleEnum::Left);
-					FToggle(Vars::Misc::Movement::EdgeBugSound, FToggleEnum::Right);
+					FToggle(Vars::Misc::Movement::AutoJumpbug, FToggleEnum::Left); // this is unreliable without setups, do not depend on it!
+					FToggle(Vars::Misc::Movement::BreakJump, FToggleEnum::Right);
 					FToggle(Vars::Misc::Movement::AutoRocketJump, FToggleEnum::Left);
 					FToggle(Vars::Misc::Movement::AutoCTap, FToggleEnum::Right);
 					FToggle(Vars::Misc::Movement::AutoFaNJump, FToggleEnum::Left);
@@ -2427,140 +1793,79 @@ void CMenu::MenuMisc(int iTab)
 					FToggle(Vars::Misc::Movement::ShieldTurnRate, FToggleEnum::Left);
 					FToggle(Vars::Misc::Movement::NoPush, FToggleEnum::Right);
 				} EndSection();
-				if (Section("Movement Suite"))
-				{
-					FToggle(Vars::Misc::Movement::PixelSurf, FToggleEnum::Left);
-					FToggle(Vars::Misc::Movement::AutoAlign, FToggleEnum::Right);
-					FToggle(Vars::Misc::Movement::MiniJump, FToggleEnum::Left);
-					FToggle(Vars::Misc::Movement::LongJump, FToggleEnum::Right);
-					PushTransparent(!Vars::Misc::Movement::MiniJump.Value);
-					{
-						FToggle(Vars::Misc::Movement::MiniJumpHoldDuck, FToggleEnum::Left);
-						FToggle(Vars::Misc::Movement::MiniJumpQueue, FToggleEnum::Right);
-					}
-					PopTransparent();
-					FToggle(Vars::Misc::Movement::TextureBug, FToggleEnum::Left);
-					FToggle(Vars::Misc::Movement::HeadSurf, FToggleEnum::Right);
-					FToggle(Vars::Misc::Movement::WallClimb, FToggleEnum::Left);
-					FToggle(Vars::Misc::Movement::AirStuck, FToggleEnum::Right);
-					PushTransparent(!Vars::Misc::Movement::TextureBug.Value);
-					{
-						FToggle(Vars::Misc::Movement::TextureBugChokeTick, FToggleEnum::Left);
-						FSlider(Vars::Misc::Movement::TextureBugChokeTicks, FSliderEnum::Right);
-						FToggle(Vars::Misc::Movement::TextureBugAutoCrouch, FToggleEnum::Left);
-						FToggle(Vars::Misc::Movement::TextureBugEdgeStop, FToggleEnum::Right);
-						FSlider(Vars::Misc::Movement::TextureBugHoldTicks, FSliderEnum::Left);
-						FSlider(Vars::Misc::Movement::TextureBugCatchEps, FSliderEnum::Right);
-						FSlider(Vars::Misc::Movement::TextureBugReach, FSliderEnum::Left);
-						FSlider(Vars::Misc::Movement::TextureBugScanStep, FSliderEnum::Right);
-					}
-					PopTransparent();
-					PushTransparent(!Vars::Misc::Movement::AirStuck.Value);
-					{
-						FSlider(Vars::Misc::Movement::AirStuckCatchEps, FSliderEnum::Left);
-						FSlider(Vars::Misc::Movement::AirStuckReach, FSliderEnum::Right);
-						FSlider(Vars::Misc::Movement::AirStuckFlushTol, FSliderEnum::Left);
-						FSlider(Vars::Misc::Movement::AirStuckDriftGain, FSliderEnum::Right);
-						FSlider(Vars::Misc::Movement::AirStuckSimBudget);
-					}
-					PopTransparent();
-				} EndSection();
-				if (Section("Pixel Tools")) // surf finder, line tracer, jump assist
-				{
-					FToggle(Vars::Misc::Movement::PixelFinder, FToggleEnum::Left);
-					FSlider(Vars::Misc::Movement::PixelFinderScanMargin, FSliderEnum::Right);
-					FToggle(Vars::Misc::Movement::PixelSurfLine, FToggleEnum::Left);
-					FColorPicker(Vars::Misc::Movement::PixelSurfLineColor, FColorPickerEnum::Right);
-					FToggle(Vars::Misc::Movement::PixelSurfAssist, FToggleEnum::Left);
-					FToggle(Vars::Misc::Movement::PixelSurfAssistRender, FToggleEnum::Right);
-					PushTransparent(!Vars::Misc::Movement::PixelSurfAssist.Value);
-					{
-						FToggle(Vars::Misc::Movement::PixelSurfAssistSetPoint, FToggleEnum::Left);
-						FToggle(Vars::Misc::Movement::PixelSurfAssistSteer, FToggleEnum::Right);
-						FToggle(Vars::Misc::Movement::PixelSurfAssistJumpBox, FToggleEnum::Left);
-						FToggle(Vars::Misc::Movement::PixelSurfAssistDeletePoint, FToggleEnum::Right);
-						FSlider(Vars::Misc::Movement::PixelSurfAssistRadius, FSliderEnum::Left);
-						FSlider(Vars::Misc::Movement::PixelSurfAssistSnapDist, FSliderEnum::Right);
-						FSlider(Vars::Misc::Movement::PixelSurfAssistReachMini, FSliderEnum::Left);
-						FSlider(Vars::Misc::Movement::PixelSurfAssistReachRegular, FSliderEnum::Right);
-						FSlider(Vars::Misc::Movement::PixelSurfAssistReachMiniDuck, FSliderEnum::Left);
-						FSlider(Vars::Misc::Movement::PixelSurfAssistReachCrouch, FSliderEnum::Right);
-						FSlider(Vars::Misc::Movement::PixelSurfAssistReachLong, FSliderEnum::Left);
-						FSlider(Vars::Misc::Movement::PixelSurfAssistReachLongDuck, FSliderEnum::Right);
-						FSlider(Vars::Misc::Movement::PixelSurfAssistLongMinDist);
-					}
-					PopTransparent();
-				} EndSection();
-			}
-
-			/* Column 2 */
-			TableNextColumn();
-			{
 				if (Section("Recorder"))
 				{
-					static std::string recorder_name = "";
-					static std::string recorder_search = "";
-					const float flInputWidth = GetWindowWidth() - GetStyle().WindowPadding.x * 2;
-
-					FInputText("Name", recorder_name, flInputWidth);
-					FInputText("Search", recorder_search, flInputWidth);
-
-					// saved recordings, click loads one, double click plays it
-					const auto vRecordings = F::Misc.GetRecordingNames(recorder_search);
-					PushStyleColor(ImGuiCol_Header, F::Render.Background1.Value);
-					PushStyleColor(ImGuiCol_HeaderHovered, F::Render.Background1p5.Value);
-					PushStyleColor(ImGuiCol_HeaderActive, F::Render.Background2.Value);
+					FToggle(Vars::Misc::Movement::MovementRecorder, FToggleEnum::Left);
+					FToggle(Vars::Misc::Movement::MovementRecorderHud, FToggleEnum::Right);
+					if (Vars::Misc::Movement::MovementRecorder.Value)
 					{
-						int iRow = 0;
-						for (const auto& sName : vRecordings)
+						FToggle(Vars::Misc::Movement::MovementRecorderShowRoutes, FToggleEnum::Left);
+						FToggle(Vars::Misc::Movement::MovementRecorderShowPath, FToggleEnum::Right);
+						FToggle(Vars::Misc::Movement::MovementRecorderMoveToStart, FToggleEnum::Left);
+						FToggle(Vars::Misc::Movement::MovementRecorderLockView, FToggleEnum::Right);
+						if (Vars::Misc::Movement::MovementRecorderMoveToStart.Value)
 						{
-							if (iRow++ == 8)
-							{
-								FText(std::format("+ {} more, refine your search", vRecordings.size() - 8).c_str(), { 5, 5 });
-								break;
-							}
-
-							if (Selectable(std::format("{}##RecorderEntry{}", sName, iRow).c_str(), sName == F::Misc.GetCurrentRecordingName()))
-							{
-								F::Misc.SelectRecording(sName);
-								recorder_name = sName;
-							}
-							if (IsItemHovered() && IsMouseDoubleClicked(ImGuiMouseButton_Left))
-								F::Misc.RecorderTogglePlay();
+							FSlider(Vars::Misc::Movement::MovementRecorderMoveToStartDist);
+							FSlider(Vars::Misc::Movement::MovementRecorderStartTolerance, FSliderEnum::Left);
+							FSlider(Vars::Misc::Movement::MovementRecorderStartSpeed, FSliderEnum::Right);
 						}
-						if (vRecordings.empty())
-							FText(recorder_search.empty() ? "No recordings saved yet." : "No matching recordings.", { 5, 5 });
+						FToggle(Vars::Misc::Movement::MovementRecorderVerbatim, FToggleEnum::Left);
+						FTooltip("replay the recording exactly, without drift correction");
+						PushTransparent(Vars::Misc::Movement::MovementRecorderVerbatim.Value);
+						{
+							FToggle(Vars::Misc::Movement::MovementRecorderDriftCorrect, FToggleEnum::Right);
+							if (Vars::Misc::Movement::MovementRecorderDriftCorrect.Value)
+								FSlider(Vars::Misc::Movement::MovementRecorderDriftStrength, FSliderEnum::Left);
+						}
+						PopTransparent();
+						if (Vars::Misc::Movement::MovementRecorderShowRoutes.Value)
+						{
+							FToggle(Vars::Misc::Movement::MovementRecorderRouteSolid, FToggleEnum::Left);
+							FColorPicker(Vars::Misc::Movement::MovementRecorderRouteColor, FColorPickerEnum::Right);
+							FSlider(Vars::Misc::Movement::MovementRecorderRoutePoints, FSliderEnum::Left);
+							FSlider(Vars::Misc::Movement::MovementRecorderRouteRadius, FSliderEnum::Right);
+						}
+						FToggle(Vars::Misc::Movement::MovementRecorderShadowPlay, FToggleEnum::Left);
+						FTooltip("keep a rolling buffer of the last seconds of movement,\nso the shadow save bind can keep a moment after it happened");
+						if (Vars::Misc::Movement::MovementRecorderShadowPlay.Value)
+							FSlider(Vars::Misc::Movement::MovementRecorderShadowSeconds, FSliderEnum::Right);
 					}
-					PopStyleColor(3);
-
-					if (FButton(F::Misc.IsRecording() ? "Stop & Save" : "Record", FButtonEnum::Left))
-						F::Misc.RecorderToggleRecord(recorder_name);
-					if (FButton(F::Misc.IsPlaying() ? "Pause" : "Play", FButtonEnum::Right))
-					{
-						if (F::Misc.GetRecorderSize() == 0 && !recorder_name.empty())
-							F::Misc.SelectRecording(recorder_name);
-						F::Misc.RecorderTogglePlay();
-					}
-					PushDisabled(F::Misc.GetCurrentRecordingName().empty());
-					{
-						if (FButton("Delete Recording", FButtonEnum::None))
-							F::Misc.RecorderDelete(F::Misc.GetCurrentRecordingName());
-					}
-					PopDisabled();
-
-					FToggle(Vars::Misc::Movement::RecorderRepeat, FToggleEnum::Left);
-					FToggle(Vars::Misc::Movement::RecorderViewAngles, FToggleEnum::Right);
-
-					// status line
-					std::string sStatus = "Type a name and press record, or pick a recording above.";
-					if (F::Misc.IsRecording())
-						sStatus = std::format("Recording '{}'... {} ticks, stop saves", F::Misc.GetCurrentRecordingName(), F::Misc.GetRecorderSize());
-					else if (F::Misc.IsPlaying())
-						sStatus = std::format("Playing '{}' {} / {}", F::Misc.GetCurrentRecordingName(), F::Misc.GetRecorderTick(), F::Misc.GetRecorderSize());
-					else if (!F::Misc.GetCurrentRecordingName().empty())
-						sStatus = std::format("'{}' loaded ({} ticks), press play", F::Misc.GetCurrentRecordingName(), F::Misc.GetRecorderSize());
-					FText(sStatus.c_str(), { 5, 5 });
 				} EndSection();
+				if (Vars::Misc::Movement::MovementRecorder.Value)
+				{
+					if (Section("##Recorder Routes"))
+					{
+						FText(std::format("{}", F::Recorder.RecorderIsRecording()
+							? "Recording..."
+							: F::Recorder.RecorderIsPlaying()
+								? std::format("Playing {}/{}", F::Recorder.RecorderPlaybackIdx(), F::Recorder.RecorderActiveFrames())
+								: std::format("{} route(s) on this map", F::Recorder.RecorderRouteCount())).c_str());
+						static std::string sRouteName = "";
+						FInputText("Recorder route name", sRouteName);
+						PushDisabled(F::Recorder.RecorderActiveFrames() == 0);
+						{
+							if (FButton("Save", FButtonEnum::SameLine | FButtonEnum::Fit))
+								F::Recorder.RecorderSaveActiveAs(sRouteName);
+						}
+						PopDisabled();
+						const int iCount = F::Recorder.RecorderRouteCount();
+						for (int i = 0; i < iCount; i++)
+						{
+							const bool bSel = (F::Recorder.RecorderSelected() == i);
+							std::string sLabel = std::format("{}  [{:.1f}s]##route{}", F::Recorder.RecorderRouteName(i), F::Recorder.RecorderRouteSeconds(i), i);
+							if (FButton(sLabel.c_str(), FButtonEnum::Fit | (bSel ? FButtonEnum::Left : FButtonEnum::None)))
+								F::Recorder.RecorderSelect(i);
+						}
+						PushDisabled(F::Recorder.RecorderSelected() < 0);
+						{
+							if (FButton("Delete", FButtonEnum::SameLine | FButtonEnum::Fit))
+								F::Recorder.RecorderDeleteRoute(F::Recorder.RecorderSelected());
+							if (FButton("Reload", FButtonEnum::SameLine | FButtonEnum::Fit))
+								F::Recorder.RecorderReload();
+						}
+						PopDisabled();
+					} EndSection();
+				}
 				if (Vars::Debug::Options.Value)
 				{
 					if (Section("##Debug Movement"))
@@ -2574,19 +1879,19 @@ void CMenu::MenuMisc(int iTab)
 							FSlider(Vars::Misc::Movement::AutoRocketJumpSkipAir, FToggleEnum::Right);
 							FSlider(Vars::Misc::Movement::AutoRocketJumpTimingOffset, FToggleEnum::Left);
 							FSlider(Vars::Misc::Movement::AutoRocketJumpApplyAbove, FToggleEnum::Right);
-
+							
 							EndPopup();
 						}
-
+						
 						FText("Debug FaN jump", { 5, 5 });
 						if (FPopupButton("Debug FaN jump", { 0, -5 }))
 						{
 							FSlider(Vars::Misc::Movement::AutoFaNJumpOnSolidTicks, FSliderEnum::Left);
 							FToggle(Vars::Misc::Movement::AutoFaNJumpCheckCeiling, FToggleEnum::Right);
-
+							
 							EndPopup();
 						}
-
+						
 						FText("Debug edgebug", { 5, 5 });
 						if (FPopupButton("Debug edgebug", { 0, -5 }))
 						{
@@ -2594,24 +1899,11 @@ void CMenu::MenuMisc(int iTab)
 							FSlider(Vars::Misc::Movement::AutoEdgebugStrafeMaxDelta, FSliderEnum::Right);
 							FToggle(Vars::Misc::Movement::AutoEdgebugTryNegativeDir, FToggleEnum::Left);
 							FToggle(Vars::Misc::Movement::AutoEdgebugTryRandomMove, FToggleEnum::Right);
-
+							
 							EndPopup();
 						}
 					} EndSection();
 				}
-			}
-			EndTable();
-		}
-		break;
-	}
-	// Main
-	case 1:
-	{
-		if (BeginTable("MiscTable", 2))
-		{
-			/* Column 1 */
-			TableNextColumn();
-			{
 				if (Section("Exploits"))
 				{
 					FToggle(Vars::Misc::Exploits::PureBypass, FToggleEnum::Left);
@@ -2636,6 +1928,23 @@ void CMenu::MenuMisc(int iTab)
 					PushTransparent(!Vars::Misc::MannVsMachine::BuyBotAutoClass.Value);
 					{
 						FDropdown(Vars::Misc::MannVsMachine::BuyBotClass, { "Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Sniper", "Spy" }, { 1, 3, 7, 4, 6, 9, 2, 8 }, FDropdownEnum::Right);
+					}
+					PopTransparent();
+					FDropdown(Vars::Misc::MannVsMachine::ChatCommands::Mode);
+					FTooltip("Allows running cat_mvm_* commands through party or in-game chat.\nOff - disabled\nParty - party members can use them\nFriends - only friends can use them\nCustom tag - only players with the tag below can use them");
+					PushTransparent(!Vars::Misc::MannVsMachine::ChatCommands::Mode.Value || Vars::Misc::MannVsMachine::ChatCommands::Mode.Value != Vars::Misc::MannVsMachine::ChatCommands::ModeEnum::CustomTag);
+					{
+						std::vector<const char*> vEntries = { "None" };
+						std::vector<int> vValues = { -1 };
+						for (int i = 0; i < F::PlayerUtils.m_vTags.size(); i++)
+						{
+							if (!F::PlayerUtils.m_vTags[i].m_bAssignable)
+								continue;
+
+							vEntries.push_back(F::PlayerUtils.m_vTags[i].m_sName.c_str());
+							vValues.push_back(i);
+						}
+						FDropdown(Vars::Misc::MannVsMachine::ChatCommands::Tag, vEntries, vValues);
 					}
 					PopTransparent();
 				} EndSection();
@@ -2687,7 +1996,6 @@ void CMenu::MenuMisc(int iTab)
 					FToggle(Vars::Misc::Game::SetupBonesOptimization, FToggleEnum::Right);
 					FToggle(Vars::Misc::Game::InsecureBypass, FToggleEnum::Left);
 					FToggle(Vars::Misc::Game::AntiCheatCompatibility, FToggleEnum::Right);
-					FToggle(Vars::Misc::Game::DiscordRPC);
 				} EndSection();
 				if (Vars::Debug::Options.Value)
 				{
@@ -2697,6 +2005,7 @@ void CMenu::MenuMisc(int iTab)
 						if (FPopupButton("Debug", { 0, -5 }))
 						{
 							FToggle(Vars::Misc::Game::AntiCheatCritHack);
+							FDropdown(Vars::Misc::TelemetryBlocker::Mode);
 
 							EndPopup();
 						}
@@ -2709,17 +2018,13 @@ void CMenu::MenuMisc(int iTab)
 					FToggle(Vars::Misc::Sound::RemoveDSP, FToggleEnum::Right);
 					FToggle(Vars::Misc::Sound::GiantWeaponSounds);
 				} EndSection();
-				if (Section("Telemetry"))
-				{
-					FDropdown(Vars::Misc::TelemetryBlocker::Mode);
-				} EndSection();
 			}
 			EndTable();
 		}
 		break;
 	}
 	// Navbot
-	case 2:
+	case 1:
 	{
 		if (BeginTable("NavbotTable", 2))
 		{
@@ -2806,6 +2111,7 @@ void CMenu::MenuMisc(int iTab)
 					FDropdown(Vars::Misc::Automation::ForceClass, { "Off", "Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy" }, {0,1,3,7,4,6,9,5,2,8}, FDropdownEnum::Left);
 					FDropdown(Vars::Misc::Movement::BotUtils::WeaponSlot, FDropdownEnum::Right);
 					FDropdown(Vars::Misc::Movement::BotUtils::AutoScope);
+					FToggle(Vars::Misc::Movement::BotUtils::AutoHeatmakerFocus, FToggleEnum::Left);
 					PushTransparent(!Vars::Misc::Movement::BotUtils::AutoScope.Value);
 					{
 						FSlider(Vars::Misc::Movement::BotUtils::AutoScopeCancelTime, FSliderEnum::None);
@@ -2830,6 +2136,7 @@ void CMenu::MenuMisc(int iTab)
 						{
 							FSlider(Vars::Misc::Movement::NavBot::StickyDangerRange);
 							FSlider(Vars::Misc::Movement::NavBot::ProjectileDangerRange);
+							FToggle(Vars::Misc::Movement::NavEngine::OffPathRepath);
 
 							EndPopup();
 						}
@@ -2930,7 +2237,7 @@ void CMenu::MenuMisc(int iTab)
 		}
 		break;
 	}
-	case 3:
+	case 2:
 	{
 		if (BeginTable("QueueingTable", 2))
 		{
@@ -2943,6 +2250,18 @@ void CMenu::MenuMisc(int iTab)
 					FToggle(Vars::Misc::Queueing::AutoCompetitiveQueue, FToggleEnum::Left);
 					FToggle(Vars::Misc::Queueing::AutoMannUpQueue, FToggleEnum::Right);
 					FSlider(Vars::Misc::Queueing::QueueDelay);
+					F::MvmQueue.Refresh();
+					PushTransparent(!Vars::Misc::Queueing::AutoMannUpQueue.Value);
+					{
+						FDropdown(Vars::Misc::Queueing::MannUpTourIndex, F::MvmQueue.m_tTourDropdown.m_vEntries, {}, FDropdownEnum::NoSanitization);
+						FToggle(Vars::Misc::Queueing::MannUpUncompleted, FToggleEnum::Left);
+					}
+					PopTransparent();
+					PushTransparent(!Vars::Misc::Queueing::AutoBootCampQueue.Value || F::MvmQueue.m_tBootcampDropdown.m_vEntries.empty());
+					{
+						FDropdown(Vars::Misc::Queueing::BootcampMissionBits, F::MvmQueue.m_tBootcampDropdown.m_vEntries, {}, FDropdownEnum::Multi | FDropdownEnum::NoSanitization);
+					}
+					PopTransparent();
 				} EndSection();
 				if (Section("Casual automation", 8))
 				{
@@ -2984,6 +2303,24 @@ void CMenu::MenuMisc(int iTab)
 					}
 					PopTransparent();
 				} EndSection();
+				#if __has_include("../../Misc/ProfileStalker/ProfileStalker.h")
+				if (Section("Profile stalker", 8))
+				{
+					FToggle(Vars::Misc::Queueing::StalkerEnable, FToggleEnum::Left);
+					PushTransparent(!Vars::Misc::Queueing::StalkerEnable.Value);
+					{
+						FSlider(Vars::Misc::Queueing::StalkerInterval);
+						const auto vStatusLines = F::ProfileStalker.GetStatusLines();
+						for (auto& sLine : vStatusLines)
+							FText(TruncateText(sLine, int(GetWindowWidth() - GetStyle().WindowPadding.x * 2)).c_str());
+						if (!vStatusLines.empty())
+							Dummy({ 0.f, H::Draw.Scale(4) });
+						if (FButton("RELOAD", FButtonEnum::Fit))
+							F::ProfileStalker.ForceReload();
+					}
+					PopTransparent();
+				} EndSection();
+				#endif
 			}
 			EndTable();
 		}
@@ -3056,47 +2393,22 @@ void CMenu::MenuAnticheat(int iTab)
 			SetCursorPosY(GetCursorPosY() + H::Draw.Scale(4));
 			FInputText("Search cheaters...", cheater_search, GetWindowWidth() - GetStyle().WindowPadding.x * 2);
 
+			auto vCheaters = F::PlayerUtils.GetCheaterVector();
 			auto to_lower = [](std::string text) -> std::string
 				{
 					std::transform(text.begin(), text.end(), text.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
 					return text;
 				};
-
-			// rebuilding, filtering and sorting the whole list every frame lags hard on huge lists, cache it and only rebuild on changes
-			static std::vector<std::pair<uint32_t, CheaterRecord_t>> vCheaterCache = {};
-			static std::string sCachedSearch = "\x01";
-			static uint64_t uCachedRevision = ~0ull;
-			static float flCachedTime = 0.f;
-			if (cheater_search != sCachedSearch
-				|| F::PlayerUtils.m_uCheaterRevision.load() != uCachedRevision
-				|| I::GlobalVars->curtime >= flCachedTime)
+			const std::string lowered_search = to_lower(cheater_search);
+			if (!lowered_search.empty())
 			{
-				sCachedSearch = cheater_search;
-				uCachedRevision = F::PlayerUtils.m_uCheaterRevision.load();
-				flCachedTime = I::GlobalVars->curtime + 1.f; // periodic refresh picks up resolved names and fresh avatars
-
-				vCheaterCache = F::PlayerUtils.GetCheaterVector();
-				const std::string lowered_search = to_lower(cheater_search);
-				if (!lowered_search.empty())
-				{
-					vCheaterCache.erase(std::remove_if(vCheaterCache.begin(), vCheaterCache.end(), [&](const std::pair<uint32_t, CheaterRecord_t>& entry)
-						{
-							const CheaterRecord_t& record = entry.second;
-							const std::string search_text = std::format("{} {} {}", record.m_sName, record.m_sReason, entry.first);
-							return to_lower(search_text).find(lowered_search) == std::string::npos;
-						}), vCheaterCache.end());
-				}
-
-				std::sort(vCheaterCache.begin(), vCheaterCache.end(), [](const auto& a, const auto& b) -> bool
+				vCheaters.erase(std::remove_if(vCheaters.begin(), vCheaters.end(), [&](const std::pair<uint32_t, CheaterRecord_t>& entry)
 					{
-						if (a.second.m_bAuto != b.second.m_bAuto)
-							return a.second.m_bAuto > b.second.m_bAuto;
-						if (a.second.m_iDetections != b.second.m_iDetections)
-							return a.second.m_iDetections > b.second.m_iDetections;
-						return a.second.m_sName < b.second.m_sName;
-					});
+						const CheaterRecord_t& record = entry.second;
+						const std::string search_text = std::format("{} {} {}", record.m_sName, record.m_sReason, entry.first);
+						return to_lower(search_text).find(lowered_search) == std::string::npos;
+					}), vCheaters.end());
 			}
-			auto& vCheaters = vCheaterCache;
 
 			if (vCheaters.empty())
 			{
@@ -3130,20 +2442,19 @@ void CMenu::MenuAnticheat(int iTab)
 						return { 255, 120, 120, 255 };
 					};
 
-					auto drawCheater = [&](const std::pair<uint32_t, CheaterRecord_t>& tEntry, int x, int y)
-						{
-							// skip cards that are clipped out of the visible menu area
-							ImVec2 vOriginalPos = { !x ? GetStyle().WindowPadding.x : GetWindowWidth() / 2 + GetStyle().WindowPadding.x / 2, H::Draw.Scale(64 + 64 * y) };
-							float flWidth = GetWindowWidth() / 2 - GetStyle().WindowPadding.x * 1.5f;
-							float flHeight = H::Draw.Scale(56);
-							{
-								const ImVec2 vScreenPos = GetDrawPos() + vOriginalPos;
-								if (!IsRectVisible(vScreenPos, { vScreenPos.x + flWidth, vScreenPos.y + flHeight }))
-									return;
-							}
+				std::sort(vCheaters.begin(), vCheaters.end(), [](const auto& a, const auto& b) -> bool
+					{
+						if (a.second.m_bAuto != b.second.m_bAuto)
+							return a.second.m_bAuto > b.second.m_bAuto;
+						if (a.second.m_iDetections != b.second.m_iDetections)
+							return a.second.m_iDetections > b.second.m_iDetections;
+						return a.second.m_sName < b.second.m_sName;
+					});
 
-							const auto& tRecord = tEntry.second;
-							F::SteamProfileCache.TouchAvatar(tEntry.first);
+				auto drawCheater = [&](const std::pair<uint32_t, CheaterRecord_t>& tEntry, int x, int y)
+					{
+						const auto& tRecord = tEntry.second;
+						F::SteamProfileCache.TouchAvatar(tEntry.first);
 						const std::string sName = tRecord.m_sName.empty() ? std::format("{}", tEntry.first) : tRecord.m_sName;
 						std::string sReason = tRecord.m_sReason.empty() ? (tRecord.m_bAuto ? "detected by unibox" : "tagged by the player") : tRecord.m_sReason;
 						if (!tRecord.m_bAuto)
@@ -3160,6 +2471,9 @@ void CMenu::MenuAnticheat(int iTab)
 						const float flPadding = H::Draw.Scale(8);
 						const float flTextOffset = flPadding * 2 + flAvatarSize;
 
+						ImVec2 vOriginalPos = { !x ? GetStyle().WindowPadding.x : GetWindowWidth() / 2 + GetStyle().WindowPadding.x / 2, H::Draw.Scale(64 + 64 * y) };
+						float flWidth = GetWindowWidth() / 2 - GetStyle().WindowPadding.x * 1.5f;
+						float flHeight = H::Draw.Scale(56);
 						ImVec2 vDrawPos = GetDrawPos() + vOriginalPos;
 						auto pDrawList = GetWindowDrawList();
 						pDrawList->AddRectFilled(vDrawPos, { vDrawPos.x + flWidth, vDrawPos.y + flHeight }, uFillColor, H::Draw.Scale(4));
@@ -4794,7 +4108,9 @@ void CMenu::MenuSettings(int iTab)
 				{
 					if (FButton("Create", FButtonEnum::Fit | FButtonEnum::SameLine, { 0, 40 }))
 					{
-						if (!std::filesystem::exists(sPath + sStaticName))
+						std::error_code tError;
+						const auto tConfigPath = std::filesystem::path(sPath) / (sStaticName + F::Configs.m_sConfigExtension);
+						if (!std::filesystem::exists(tConfigPath, tError) && !tError)
 						{
 							if (!bVisual)
 								F::Configs.SaveConfig(sStaticName);
@@ -4813,9 +4129,12 @@ void CMenu::MenuSettings(int iTab)
 
 				std::vector<std::pair<std::filesystem::directory_entry, std::string>> vConfigs = {};
 				bool bDefaultFound = false;
-				for (auto& tEntry : std::filesystem::directory_iterator(sPath))
+				std::error_code tError;
+				for (std::filesystem::directory_iterator tIterator(sPath, tError), tEnd; !tError && tIterator != tEnd; tIterator.increment(tError))
 				{
-					if (!tEntry.is_regular_file() || tEntry.path().extension() != F::Configs.m_sConfigExtension)
+					auto& tEntry = *tIterator;
+					std::error_code tEntryError;
+					if (!tEntry.is_regular_file(tEntryError) || tEntryError || tEntry.path().extension() != F::Configs.m_sConfigExtension)
 						continue;
 
 					std::string sName = tEntry.path().filename().string();
@@ -5566,28 +4885,34 @@ void CMenu::MenuSettings(int iTab)
 
 			if (!I::EngineClient->IsConnected())
 			{
-				bool bItem = false;
+				static int iAchievementOp = 0;
 				if (FButton("Unlock achievements", FButtonEnum::Left))
+				{
+					iAchievementOp = 0;
 					OpenPopup("UnlockAchievements");
+				}
 				if (FButton("Unlock item achievements", FButtonEnum::Right | FButtonEnum::SameLine))
 				{
+					iAchievementOp = 1;
 					OpenPopup("UnlockAchievements");
-					bItem = true;
 				}
 				if (FButton("Lock achievements", FButtonEnum::Left))
+				{
+					iAchievementOp = 0;
 					OpenPopup("LockAchievements");
+				}
 				if (FButton("Lock item achievements", FButtonEnum::Right | FButtonEnum::SameLine))
 				{
+					iAchievementOp = 1;
 					OpenPopup("LockAchievements");
-					bItem = true;
 				}
 				if (FBeginPopupModal("UnlockAchievements"))
 				{
-					FText(std::format("Do you really want to unlock all {}achievements?", (bItem ? "item " : "")).c_str());
+					FText(std::format("Do you really want to unlock all {}achievements?", (iAchievementOp ? "item " : "")).c_str());
 
 					if (FButton("Yes, unlock", FButtonEnum::Left))
 					{
-						if (bItem) F::Misc.UnlockItemAchievements();
+						if (iAchievementOp) F::Misc.UnlockItemAchievements();
 						else F::Misc.UnlockAchievements();
 						CloseCurrentPopup();
 					}
@@ -5598,11 +4923,11 @@ void CMenu::MenuSettings(int iTab)
 				}
 				else if (FBeginPopupModal("LockAchievements"))
 				{
-					FText(std::format("Do you really want to lock all {}achievements?", (bItem ? "item " : "")).c_str());
+					FText(std::format("Do you really want to lock all {}achievements?", (iAchievementOp ? "item " : "")).c_str());
 
 					if (FButton("Yes, lock", FButtonEnum::Left))
 					{
-						if (bItem) F::Misc.LockItemAchievements();
+						if (iAchievementOp) F::Misc.LockItemAchievements();
 						else F::Misc.LockAchievements();
 						CloseCurrentPopup();
 					}
@@ -6442,8 +5767,7 @@ void CMenu::Render()
 		AddDraggable("Conditions", Vars::Menu::ConditionsDisplay, FGet(Vars::Menu::Indicators) & Vars::Menu::IndicatorsEnum::Conditions);
 		AddDraggable("Seed prediction", Vars::Menu::SeedPredictionDisplay, FGet(Vars::Menu::Indicators) & Vars::Menu::IndicatorsEnum::SeedPrediction);
 		AddDraggable("Nav bot", Vars::Menu::NavBotDisplay, FGet(Vars::Menu::Indicators) & Vars::Menu::IndicatorsEnum::NavBot);
-		AddDraggable("Jumpbug", Vars::Menu::JumpbugDisplay, FGet(Vars::Menu::Indicators) & Vars::Menu::IndicatorsEnum::Jumpbug);
-		AddDraggable("Edgebug", Vars::Menu::EdgebugDisplay, FGet(Vars::Menu::Indicators) & Vars::Menu::IndicatorsEnum::Edgebug);
+		AddDraggable("Recorder", Vars::Menu::RecorderDisplay, FGet(Vars::Misc::Movement::MovementRecorder) && FGet(Vars::Misc::Movement::MovementRecorderHud), { H::Draw.Scale(160), H::Draw.Scale(50) });
 		AddResizableDraggable("Camera", Vars::Visuals::Simulation::ProjectileWindow, FGet(Vars::Visuals::Simulation::ProjectileCamera), OptionalConstraints);
 
 		DrawMenu();

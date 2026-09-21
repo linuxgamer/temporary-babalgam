@@ -1,7 +1,6 @@
 #include "../SDK/SDK.h"
 
 #include "../Features/Visuals/Materials/Materials.h"
-#include "../Features/Visuals/FlipWorld/FlipWorld.h"
 #include "../Features/Visuals/Visuals.h"
 #include "../Features/Backtrack/Backtrack.h"
 #include "../Features/Ticks/Ticks.h"
@@ -9,9 +8,9 @@
 #include "../Features/CheatDetection/CheatDetection.h"
 #include "../Features/Resolver/Resolver.h"
 #include "../Features/Spectate/Spectate.h"
-#include "../Features/NavBot/NavEngine/Controllers/Controller.h"
+#include "../Features/NavBot/Objectives.h"
 #include "../Features/NavBot/NavBotCore.h"
-#include "../Features/NavBot/NavEngine/NavEngine.h"
+#include "../Features/NavBot/NavEngine.h"
 #include "../Features/Killstreak/Killstreak.h"
 #include "../Features/FollowBot/FollowBot.h"
 #include "../Features/Aimbot/AimbotProjectile/AimbotProjectile.h"
@@ -26,7 +25,6 @@ MAKE_HOOK(CViewRender_LevelInit, U::Memory.GetVirtual(I::ViewRender, 1), void,
 #ifndef TEXTMODE
 	F::Materials.ReloadMaterials();
 	F::Visuals.OverrideWorldTextures();
-	F::FlipWorld.Initialize();
 	F::Killstreak.Reset();
 	F::Spectate.Reset();
 #endif

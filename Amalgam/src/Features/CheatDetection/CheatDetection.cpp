@@ -169,75 +169,6 @@ void CCheatDetection::TrackCritEvent(CTFPlayer* pEntity, CTFWeaponBase* pWeapon,
 	}
 }
 
-bool CCheatDetection::IsTickbaseAbusing(CTFPlayer* pEntity)
-{
-	auto& tMove = mData[pEntity].m_MovementAbuse;
-	if (!(Vars::CheatDetection::Methods.Value & Vars::CheatDetection::MethodsEnum::TickbaseAbuse))
-	{
-		tMove.m_iLastSimTicks = -1;
-		tMove.m_flTickbaseWait = 0.f;
-		return false;
-	}
-
-	const int iSimTicks = TIME_TO_TICKS(pEntity->m_flSimulationTime());
-	const int iServerTicks = I::GlobalVars->tickcount;
-
-	bool bInfract = false;
-	if (tMove.m_iLastSimTicks >= 0)
-	{
-		// Simulation time regressing backward is a classic tickbase-manipulation signature.
-		if (iSimTicks < tMove.m_iLastSimTicks)
-			bInfract = true;
-
-		// A player should get simulated roughly every tick; a long gap since the last
-		// simulation is suspicious. Debounced so a stalled/lagging player doesn't spam.
-		const int iGapTicks = std::abs(iServerTicks - iSimTicks);
-		if (iGapTicks > TIME_TO_TICKS(Vars::CheatDetection::TickbaseGapSeconds.Value) && I::GlobalVars->curtime >= tMove.m_flTickbaseWait)
-		{
-			bInfract = true;
-			tMove.m_flTickbaseWait = I::GlobalVars->curtime + 0.25f;
-		}
-	}
-
-	tMove.m_iLastSimTicks = iSimTicks;
-	return bInfract;
-}
-
-bool CCheatDetection::IsSpeedhacking(CTFPlayer* pEntity)
-{
-	auto& tMove = mData[pEntity].m_MovementAbuse;
-	if (!(Vars::CheatDetection::Methods.Value & Vars::CheatDetection::MethodsEnum::Speedhack))
-	{
-		tMove.m_vLastOrigin = pEntity->GetAbsOrigin();
-		tMove.m_iSpeedhackViolations = 0;
-		tMove.m_flSpeedhackWait = 0.f;
-		return false;
-	}
-
-	bool bInfract = false;
-	if (pEntity->m_MoveType() == MOVETYPE_WALK && pEntity->m_flMaxspeed() > 0.f && !tMove.m_vLastOrigin.IsZero())
-	{
-		const float flMaxDist = pEntity->m_flMaxspeed() * TICK_INTERVAL * Vars::CheatDetection::SpeedhackTolerance.Value;
-		const float flMoved = (pEntity->GetAbsOrigin() - tMove.m_vLastOrigin).Length2D();
-
-		if (flMoved > flMaxDist)
-		{
-			tMove.m_iSpeedhackViolations++;
-			if (tMove.m_iSpeedhackViolations >= Vars::CheatDetection::SpeedhackViolations.Value && I::GlobalVars->curtime >= tMove.m_flSpeedhackWait)
-			{
-				bInfract = true;
-				tMove.m_iSpeedhackViolations = 0;
-				tMove.m_flSpeedhackWait = I::GlobalVars->curtime + 0.25f;
-			}
-		}
-		else
-			tMove.m_iSpeedhackViolations = std::max(0, tMove.m_iSpeedhackViolations - 1);
-	}
-
-	tMove.m_vLastOrigin = pEntity->GetAbsOrigin();
-	return bInfract;
-}
-
 void CCheatDetection::Infract(CTFPlayer* pEntity, const char* sReason)
 {
 	bool bMark = false;
@@ -289,7 +220,6 @@ void CCheatDetection::Run()
 			mData[pPlayer].m_AimFlicking = {};
 			mData[pPlayer].m_DuckSpeed = {};
 			mData[pPlayer].m_CritTracker = {};
-			mData[pPlayer].m_MovementAbuse = {};
 			continue;
 		}
 
@@ -308,10 +238,6 @@ void CCheatDetection::Run()
 			Infract(pPlayer, "lag-comp abuse");
 		if (IsCritManipulating(pPlayer))
 			Infract(pPlayer, "crit manipulation");
-		if (IsTickbaseAbusing(pPlayer))
-			Infract(pPlayer, "tickbase abuse");
-		if (IsSpeedhacking(pPlayer))
-			Infract(pPlayer, "speedhack");
 	}
 }
 

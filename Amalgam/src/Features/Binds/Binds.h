@@ -50,9 +50,6 @@ public:
 	std::vector<Bind_t> m_vBinds = {};
 	bool m_bDisplay = false;
 	std::recursive_mutex m_mMutex;
-
-	// movement recorder playback forces key bind states instead of polling them
-	std::vector<char> m_vPlaybackActive = {};
 };
 
 ADD_FEATURE(CBinds, Binds);

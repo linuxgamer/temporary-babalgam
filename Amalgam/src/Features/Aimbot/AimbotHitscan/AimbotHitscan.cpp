@@ -517,11 +517,6 @@ bool CAimbotHitscan::ShouldFire(CTFPlayer* pLocal, CTFWeaponBase* pWeapon, CUser
 	if (!Vars::Aimbot::General::AutoShoot.Value)
 		return false;
 
-	// pressing attack while the rifle can't fire yet only dry-fires zoom-locked rifles
-	// (the zoomed cond goes stale while auto-rezoom unscopes us after a shot)
-	if (SDK::AttribHookValue(0, "sniper_only_fire_zoomed", pWeapon) && !G::CanPrimaryAttack)
-		return false;
-
 	if (Vars::Aimbot::Hitscan::Modifiers.Value & Vars::Aimbot::Hitscan::ModifiersEnum::WaitForHeadshot
 		&& tTarget.m_pEntity->IsPlayer())
 	{
@@ -867,8 +862,7 @@ void CAimbotHitscan::Run(CTFPlayer* pLocal, CTFWeaponBase* pWeapon, CUserCmd* pC
 		}
 		else if (Vars::Aimbot::Hitscan::Modifiers.Value & Vars::Aimbot::Hitscan::ModifiersEnum::ScopedOnly && !bScoped)
 			return;
-		else if (!bScoped && SDK::AttribHookValue(0, "sniper_only_fire_zoomed", pWeapon)
-			|| SDK::AttribHookValue(0, "sniper_only_fire_zoomed", pWeapon) && pCmd->buttons & IN_ATTACK2)
+		else if (!bScoped && SDK::AttribHookValue(0, "sniper_only_fire_zoomed", pWeapon))
 			return;
 		break;
 	}

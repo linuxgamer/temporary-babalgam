@@ -19,6 +19,19 @@ static inline bool GetDistanceThing(float flDistance, const ChamsMaterial_t& tMa
 	return tColorOut.a;
 }
 
+void CChams::Reset()
+{
+	m_vEntities.clear();
+	m_mEntities.clear();
+	m_tOriginalColor = {};
+	m_flOriginalBlend = 1.f;
+	m_pOriginalMaterial = nullptr;
+	m_iOriginalOverride = OVERRIDE_NORMAL;
+	m_flCurrentDistance = -1.f;
+	m_iFlags = 0;
+	m_bRendering = false;
+}
+
 void CChams::Begin()
 {
 	m_tOriginalColor = I::RenderView->GetColorModulation();
@@ -34,6 +47,9 @@ void CChams::End()
 
 void CChams::DrawModel(CBaseEntity* pEntity, const Chams_t& tChams, IMatRenderContext* pRenderContext, int iModel, bool bTwoModel)
 {
+	if (!pEntity || !pEntity->GetModel())
+		return;
+
 	if (!m_iFlags && iModel == ModelEnum::Visible)
 		m_mEntities[pEntity->entindex()];
 

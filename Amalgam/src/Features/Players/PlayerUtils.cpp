@@ -889,7 +889,6 @@ void CPlayerlistUtils::UpdateCheaterRecord(uint32_t uAccountID, const char* sNam
 	tRecord.m_iTimestamp = I::GlobalVars ? I::GlobalVars->tickcount : int(std::time(nullptr));
 
 	m_bCheaterSave = true;
-	m_uCheaterRevision.fetch_add(1);
 }
 
 void CPlayerlistUtils::RemoveCheaterRecord(uint32_t uAccountID, bool bMarkSave)
@@ -898,7 +897,6 @@ void CPlayerlistUtils::RemoveCheaterRecord(uint32_t uAccountID, bool bMarkSave)
 		return;
 
 	m_mCheaterRecords.erase(uAccountID);
-	m_uCheaterRevision.fetch_add(1);
 	if (bMarkSave)
 		m_bCheaterSave = true;
 }
@@ -947,7 +945,6 @@ bool CPlayerlistUtils::ImportCheatersFromJson(const std::string& sJson, bool bMa
 		{
 			std::lock_guard tLock(m_tMutex);
 			m_mCheaterRecords = std::move(mTemp);
-			m_uCheaterRevision.fetch_add(1);
 			for (const auto& [uAccountID, _] : m_mCheaterRecords)
 			{
 				if (uAccountID)

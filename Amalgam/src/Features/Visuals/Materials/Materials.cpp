@@ -10,12 +10,34 @@
 #include <filesystem>
 #include <fstream>
 
+static std::filesystem::path GetMaterialFilePath(const char* sName)
+{
+	if (!sName || !*sName)
+		return {};
+
+	try
+	{
+		const std::filesystem::path tName(sName);
+		if (tName == "." || tName == ".." || tName.has_root_name() || tName.has_root_directory() || tName.has_parent_path())
+			return {};
+
+		const std::filesystem::path tDirectory = std::filesystem::path(F::Configs.m_sMaterialsPath).lexically_normal();
+		const std::filesystem::path tPath = (tDirectory / (tName.string() + ".vmt")).lexically_normal();
+		return tPath.parent_path() == tDirectory ? tPath : std::filesystem::path{};
+	}
+	catch (...)
+	{
+		return {};
+	}
+}
+
 IMaterial* CMaterials::Create(char const* szName, KeyValues* pKV)
 {
 	IMaterial* pMaterial = I::MaterialSystem->CreateMaterial(szName, pKV);
 	if (!pMaterial)
 		return nullptr;
 
+	m_mMatList[pMaterial];
 	return pMaterial;
 }
 
@@ -36,11 +58,54 @@ bool CMaterials::IsUnloadComplete() const
 	return m_bUnloadComplete.load();
 }
 
+static inline void RemoveVars(Material_t& tMaterial)
+{
+	tMaterial.m_bStored = false;
+	tMaterial.m_phongtint = nullptr;
+	tMaterial.m_envmaptint = nullptr;
+	tMaterial.m_bInvertCull = false;
+	tMaterial.m_bBlockOccluded = false;
+}
+
+static inline void StoreVars(Material_t& tMaterial)
+{
+	if (tMaterial.m_bStored || !tMaterial.m_pMaterial)
+		return;
+
+	tMaterial.m_bStored = true;
+
+	bool bFound; auto $phongtint = tMaterial.m_pMaterial->FindVar("$phongtint", &bFound, false);
+	if (bFound)
+		tMaterial.m_phongtint = $phongtint;
+
+	auto $envmaptint = tMaterial.m_pMaterial->FindVar("$envmaptint", &bFound, false);
+	if (bFound)
+		tMaterial.m_envmaptint = $envmaptint;
+
+	auto $invertcull = tMaterial.m_pMaterial->FindVar("$invertcull", &bFound, false);
+	if (bFound && $invertcull && $invertcull->GetIntValueInternal())
+		tMaterial.m_bInvertCull = true;
+
+	auto $blockoccluded = tMaterial.m_pMaterial->FindVar("$blockoccluded", &bFound, false);
+	if (bFound && $blockoccluded && $blockoccluded->GetIntValueInternal())
+		tMaterial.m_bBlockOccluded = true;
+}
+
 void CMaterials::ServicePendingOperation()
 {
 	const PendingOperation operation = m_ePendingOperation.exchange(PendingOperation::None);
 	if (operation == PendingOperation::None)
 		return;
+
+	const char* sName = "Materials.None";
+	switch (operation)
+	{
+	case PendingOperation::Load: sName = "Materials.Load"; break;
+	case PendingOperation::Reload: sName = "Materials.Reload"; break;
+	case PendingOperation::Unload: sName = "Materials.Unload"; break;
+	case PendingOperation::None: break;
+	}
+	SDK::CInitTimingScope tOperation(sName);
 
 	switch (operation)
 	{
@@ -50,6 +115,7 @@ void CMaterials::ServicePendingOperation()
 		break;
 	case PendingOperation::Reload:
 		UnloadMaterials();
+		I::MaterialSystem->ReloadMaterials();
 		LoadMaterials();
 		break;
 	case PendingOperation::Unload:
@@ -82,6 +148,9 @@ void CMaterials::Remove(IMaterial* pMaterial)
 	if (!pMaterial)
 		return;
 
+	if (m_mMatList.contains(pMaterial))
+		m_mMatList.erase(pMaterial);
+
 	pMaterial->DecrementReferenceCount();
 	pMaterial->DeleteIfUnreferenced();
 	pMaterial = nullptr;
@@ -97,39 +166,6 @@ void CMaterials::StoreStruct(const std::string& sName, const std::string& sVMT, 
 	tMaterial.m_bLocked = bLocked;
 
 	m_mMaterials[FNV1A::Hash32(sName.c_str())] = tMaterial;
-}
-
-static inline void StoreVars(Material_t& tMaterial)
-{
-	if (tMaterial.m_bStored || !tMaterial.m_pMaterial)
-		return;
-
-	tMaterial.m_bStored = true;
-
-	bool bFound; auto $phongtint = tMaterial.m_pMaterial->FindVar("$phongtint", &bFound, false);
-	if (bFound)
-		tMaterial.m_phongtint = $phongtint;
-	
-	auto $envmaptint = tMaterial.m_pMaterial->FindVar("$envmaptint", &bFound, false);
-	if (bFound)
-		tMaterial.m_envmaptint = $envmaptint;
-	
-	auto $invertcull = tMaterial.m_pMaterial->FindVar("$invertcull", &bFound, false);
-	if (bFound && $invertcull && $invertcull->GetIntValueInternal())
-		tMaterial.m_bInvertCull = true;
-	
-	auto $blockoccluded = tMaterial.m_pMaterial->FindVar("$blockoccluded", &bFound, false);
-	if (bFound && $blockoccluded && $blockoccluded->GetIntValueInternal())
-		tMaterial.m_bBlockOccluded = true;
-}
-
-static inline void RemoveVars(Material_t& tMaterial)
-{
-	tMaterial.m_bStored = false;
-	tMaterial.m_phongtint = nullptr;
-	tMaterial.m_envmaptint = nullptr;
-	tMaterial.m_bInvertCull = false;
-	tMaterial.m_bBlockOccluded = false;
 }
 
 static inline std::string to_lower(std::string value)
@@ -164,11 +200,14 @@ static inline std::string modify_vmt(const std::string& vmt)
 	if (!has_material_key(vmt, "$model"))
 		append += "\n\t$model \"1\"";
 
-	if (!has_cloak_factor && !has_material_key(vmt, "$cloakpassenabled"))
-		append += "\n\t$cloakpassenabled \"1\"";
+	if (SDK::SupportsDX9Shaders())
+	{
+		if (!has_cloak_factor && !has_material_key(vmt, "$cloakpassenabled"))
+			append += "\n\t$cloakpassenabled \"1\"";
 
-	if (!has_cloak_factor && is_vertex_lit_generic(vmt) && !has_material_key(vmt, "proxies"))
-		append += "\n\tProxies\n\t{\n\t\tinvis\n\t\t{\n\t\t}\n\t}";
+		if (!has_cloak_factor && is_vertex_lit_generic(vmt) && !has_material_key(vmt, "proxies"))
+			append += "\n\tProxies\n\t{\n\t\tinvis\n\t\t{\n\t\t}\n\t}";
+	}
 
 	if (!append.empty())
 		modified.insert(insert_pos, append);
@@ -180,6 +219,9 @@ static inline std::string modify_vmt(const std::string& vmt)
 
 void CMaterials::LoadMaterials()
 {
+	SDK::CInitTimingScope tTotal("LoadMaterials total");
+	const bool bDx9Shaders = SDK::SupportsDX9Shaders();
+
 	// default materials
 	StoreStruct( // hacky
 		"None",
@@ -198,10 +240,15 @@ void CMaterials::LoadMaterials()
 		true);
 	StoreStruct(
 		"Shaded",
-			"\"VertexLitGeneric\""
-			"\n{"
-			"\n\t$basetexture \"white\""
-			"\n}",
+			bDx9Shaders
+			? "\"VertexLitGeneric\""
+			  "\n{"
+			  "\n\t$basetexture \"white\""
+			  "\n}"
+			: "\"UnlitGeneric\""
+			  "\n{"
+			  "\n\t$basetexture \"white\""
+			  "\n}",
 		true);
 	StoreStruct(
 		"Wireframe",
@@ -213,48 +260,71 @@ void CMaterials::LoadMaterials()
 		true);
 	StoreStruct(
 		"Fresnel",
-			"\"VertexLitGeneric\""
-			"\n{"
-			"\n\t$basetexture \"white\""
-			"\n\t$bumpmap \"models/player/shared/shared_normal\""
-			"\n\t$color2 \"[0 0 0]\""
-			"\n\t$additive \"1\""
-			"\n\t$phong \"1\""
-			"\n\t$phongfresnelranges \"[0 0.5 1]\""
-			"\n\t$envmap \"skybox/sky_dustbowl_01\""
-			"\n\t$envmapfresnel \"1\""
-			"\n}",
+			bDx9Shaders
+			? "\"VertexLitGeneric\""
+			  "\n{"
+			  "\n\t$basetexture \"white\""
+			  "\n\t$bumpmap \"models/player/shared/shared_normal\""
+			  "\n\t$color2 \"[0 0 0]\""
+			  "\n\t$additive \"1\""
+			  "\n\t$phong \"1\""
+			  "\n\t$phongfresnelranges \"[0 0.5 1]\""
+			  "\n\t$envmap \"skybox/sky_dustbowl_01\""
+			  "\n\t$envmapfresnel \"1\""
+			  "\n}"
+			: "\"UnlitGeneric\""
+			  "\n{"
+			  "\n\t$basetexture \"white\""
+			  "\n\t$additive \"1\""
+			  "\n}",
 		true);
 	StoreStruct(
 		"Shine",
-			"\"VertexLitGeneric\""
-			"\n{"
-			"\n\t$additive \"1\""
-			"\n\t$envmap \"cubemaps/cubemap_sheen002.hdr\""
-			"\n\t$envmaptint \"[1 1 1]\""
-			"\n}",
+			bDx9Shaders
+			? "\"VertexLitGeneric\""
+			  "\n{"
+			  "\n\t$additive \"1\""
+			  "\n\t$envmap \"cubemaps/cubemap_sheen002.hdr\""
+			  "\n\t$envmaptint \"[1 1 1]\""
+			  "\n}"
+			: "\"UnlitGeneric\""
+			  "\n{"
+			  "\n\t$basetexture \"white\""
+			  "\n\t$additive \"1\""
+			  "\n}",
 		true);
 	StoreStruct(
 		"Tint",
-			"\"VertexLitGeneric\""
-			"\n{"
-			"\n\t$basetexture \"models/player/shared/ice_player\""
-			"\n\t$bumpmap \"models/player/shared/shared_normal\""
-			"\n\t$additive \"1\""
-			"\n\t$phong \"1\""
-			"\n\t$phongfresnelranges \"[0 0.001 0.001]\""
-			"\n\t$envmap \"skybox/sky_dustbowl_01\""
-			"\n\t$envmapfresnel \"1\""
-			"\n\t$selfillum \"1\""
-			"\n\t$selfillumtint \"[0 0 0]\""
-			"\n}",
+			bDx9Shaders
+			? "\"VertexLitGeneric\""
+			  "\n{"
+			  "\n\t$basetexture \"models/player/shared/ice_player\""
+			  "\n\t$bumpmap \"models/player/shared/shared_normal\""
+			  "\n\t$additive \"1\""
+			  "\n\t$phong \"1\""
+			  "\n\t$phongfresnelranges \"[0 0.001 0.001]\""
+			  "\n\t$envmap \"skybox/sky_dustbowl_01\""
+			  "\n\t$envmapfresnel \"1\""
+			  "\n\t$selfillum \"1\""
+			  "\n\t$selfillumtint \"[0 0 0]\""
+			  "\n}"
+			: "\"UnlitGeneric\""
+			  "\n{"
+			  "\n\t$basetexture \"white\""
+			  "\n\t$additive \"1\""
+			  "\n}",
 		true);
 	// user materials
-	for (auto& tEntry : std::filesystem::directory_iterator(F::Configs.m_sMaterialsPath))
+	std::error_code tError;
+	for (std::filesystem::directory_iterator tIterator(F::Configs.m_sMaterialsPath, tError), tEnd; !tError && tIterator != tEnd; tIterator.increment(tError))
 	{
+		auto& tEntry = *tIterator;
 		// Ignore all non-material files
-		if (!tEntry.is_regular_file() || tEntry.path().extension() != std::string(".vmt"))
+		if (!tEntry.is_regular_file(tError) || tError || tEntry.path().extension() != ".vmt")
+		{
+			tError.clear();
 			continue;
+		}
 
 		std::ifstream fStream(tEntry.path());
 		if (!fStream.good())
@@ -273,47 +343,70 @@ void CMaterials::LoadMaterials()
 	// create materials
 	for (auto& tMaterial : m_mMaterials | std::views::values)
 	{
+		const double flStart = SDK::InitNowMs();
 		const std::string material_vmt = modify_vmt(tMaterial.m_sVMT);
 		tMaterial.m_pMaterial = create_from_vmt(tMaterial.m_sName.c_str(), material_vmt);
+		const double flMs = SDK::InitNowMs() - flStart;
+		if (flMs >= 5.0)
+			SDK::LogInitTiming(std::format("LoadMaterials create {}", tMaterial.m_sName).c_str(), flMs);
 		//StoreVars(tMaterial);
 	}
 
-	F::Glow.Initialize();
-	F::CameraWindow.Initialize();
+	{
+		SDK::CInitTimingScope tTargets("LoadMaterials render targets");
+		if (bDx9Shaders)
+			I::MaterialSystem->BeginRenderTargetAllocation();
+		F::Glow.Initialize();
+		F::CameraWindow.Initialize();
+		if (bDx9Shaders)
+			I::MaterialSystem->EndRenderTargetAllocation();
+	}
 
-	S::InitializeStandardMaterials.Call<void>();
+	{
+		SDK::CInitTimingScope tStd("LoadMaterials InitializeStandardMaterials");
+		S::InitializeStandardMaterials.Call<void>();
+	}
 	auto pMaterial = *reinterpret_cast<IMaterial**>(U::Memory.RelToAbs(S::Wireframe()));
 	if (pMaterial)
 		pMaterial->SetMaterialVarFlag(MATERIAL_VAR_VERTEXALPHA, true);
 
 	static std::unordered_map<std::string, int> mSkyboxes = {};
 	static std::vector<const char*> vFaces = { "rt.vmt", "lf.vmt", "bk.vmt", "ft.vmt", "up.vmt", "dn.vmt" };
-	FileFindHandle_t hFind;
-	for (char const* szFile = I::FileSystem->FindFirst("materials/skybox/*.vmt", &hFind); szFile && *szFile; szFile = I::FileSystem->FindNext(hFind))
 	{
-		std::string sFile = szFile;
-
-		int iFace = -1;
-		for (int i = 0; i < vFaces.size(); i++)
+		SDK::CInitTimingScope tSkyboxes("LoadMaterials skybox scan");
+		if (mSkyboxes.empty())
 		{
-			auto sFace = vFaces[i];
-			if (sFile.find(sFace) == sFile.length() - strlen(sFace))
+			FileFindHandle_t hFind = -1;
+			for (char const* szFile = I::FileSystem->FindFirst("materials/skybox/*.vmt", &hFind); szFile && *szFile; szFile = I::FileSystem->FindNext(hFind))
 			{
-				iFace = 1 << i;
-				sFile = sFile.substr(0, sFile.length() - strlen(sFace));
-				break;
-			}
-		}
-		if (iFace == -1)
-			continue;
+				std::string sFile = szFile;
 
-		mSkyboxes[sFile] |= iFace;
-	}
-	Vars::Visuals::World::SkyboxChanger.m_vValues = { "Off" };
-	for (auto& [sSkybox, iFaces] : mSkyboxes)
-	{
-		if (iFaces == 0b111111)
-			Vars::Visuals::World::SkyboxChanger.m_vValues.push_back(sSkybox.c_str());
+				int iFace = -1;
+				for (int i = 0; i < vFaces.size(); i++)
+				{
+					auto sFace = vFaces[i];
+					if (sFile.find(sFace) == sFile.length() - strlen(sFace))
+					{
+						iFace = 1 << i;
+						sFile = sFile.substr(0, sFile.length() - strlen(sFace));
+						break;
+					}
+				}
+				if (iFace == -1)
+					continue;
+
+				mSkyboxes[sFile] |= iFace;
+			}
+			if (hFind != -1)
+				I::FileSystem->FindClose(hFind);
+		}
+
+		Vars::Visuals::World::SkyboxChanger.m_vValues = { "Off" };
+		for (auto& [sSkybox, iFaces] : mSkyboxes)
+		{
+			if (iFaces == 0b111111)
+				Vars::Visuals::World::SkyboxChanger.m_vValues.push_back(sSkybox.c_str());
+		}
 	}
 
 	m_bLoaded = true;
@@ -329,6 +422,7 @@ void CMaterials::UnloadMaterials()
 	for (auto& tMaterial : m_mMaterials | std::views::values)
 		Remove(tMaterial.m_pMaterial);
 	m_mMaterials.clear();
+	m_mMatList.clear();
 }
 
 void CMaterials::ReloadMaterials()
@@ -382,8 +476,13 @@ std::string CMaterials::GetVMT(uint32_t uHash)
 
 void CMaterials::AddMaterial(const char* sName)
 {
+	const std::filesystem::path tPath = GetMaterialFilePath(sName);
+	if (tPath.empty())
+		return;
+
 	auto uHash = FNV1A::Hash32(sName);
-	if (uHash == FNV1A::Hash32Const("Original") || std::filesystem::exists(F::Configs.m_sMaterialsPath + sName + ".vmt") || m_mMaterials.contains(uHash))
+	std::error_code tError;
+	if (uHash == FNV1A::Hash32Const("Original") || std::filesystem::exists(tPath, tError) || tError || m_mMaterials.contains(uHash))
 		return;
 
 	StoreStruct(
@@ -398,18 +497,38 @@ void CMaterials::AddMaterial(const char* sName)
 	const std::string material_vmt = modify_vmt(tMaterial.m_sVMT);
 	tMaterial.m_pMaterial = create_from_vmt(sName, material_vmt);
 	if (!tMaterial.m_pMaterial)
+	{
+		m_mMaterials.erase(uHash);
 		return;
+	}
 
 	//StoreVars(tMaterial);
 
-	std::ofstream outStream(F::Configs.m_sMaterialsPath + sName + ".vmt");
+	std::ofstream outStream(tPath);
+	if (!outStream)
+	{
+		Remove(tMaterial.m_pMaterial);
+		m_mMaterials.erase(uHash);
+		return;
+	}
 	outStream << tMaterial.m_sVMT;
-	outStream.close();
+	if (!outStream)
+	{
+		std::error_code tRemoveError;
+		std::filesystem::remove(tPath, tRemoveError);
+		Remove(tMaterial.m_pMaterial);
+		m_mMaterials.erase(uHash);
+	}
 }
 
 void CMaterials::EditMaterial(const char* sName, const char* sVMT)
 {
-	if (!std::filesystem::exists(F::Configs.m_sMaterialsPath + sName + ".vmt"))
+	const std::filesystem::path tPath = GetMaterialFilePath(sName);
+	if (tPath.empty() || !sVMT)
+		return;
+
+	std::error_code tError;
+	if (!std::filesystem::exists(tPath, tError) || tError)
 		return;
 
 	m_bLoaded = false;
@@ -419,23 +538,35 @@ void CMaterials::EditMaterial(const char* sName, const char* sVMT)
 	{
 		auto& tMaterial = m_mMaterials[uHash];
 
-		Remove(tMaterial.m_pMaterial);
-		RemoveVars(tMaterial);
-		tMaterial.m_sVMT = sVMT;
-
 		const std::string material_vmt = modify_vmt(sVMT);
-		tMaterial.m_pMaterial = create_from_vmt(sName, material_vmt);
-		if (!tMaterial.m_pMaterial)
+		IMaterial* pNewMaterial = create_from_vmt(sName, material_vmt);
+		if (!pNewMaterial)
 		{
 			m_bLoaded = true;
 			return;
 		}
 
+		Remove(tMaterial.m_pMaterial);
+		RemoveVars(tMaterial);
+		tMaterial.m_pMaterial = pNewMaterial;
+		tMaterial.m_sVMT = sVMT;
+
 		//StoreVars(tMaterial);
 
-		std::ofstream outStream(F::Configs.m_sMaterialsPath + sName + ".vmt");
+		std::ofstream outStream(tPath);
+		if (!outStream)
+		{
+			m_bLoaded = true;
+			return;
+		}
 		outStream << sVMT;
-		outStream.close();
+		if (!outStream)
+		{
+			std::error_code tRemoveError;
+			std::filesystem::remove(tPath, tRemoveError);
+			m_bLoaded = true;
+			return;
+		}
 	}
 
 	m_bLoaded = true;
@@ -443,7 +574,12 @@ void CMaterials::EditMaterial(const char* sName, const char* sVMT)
 
 void CMaterials::RemoveMaterial(const char* sName)
 {
-	if (!std::filesystem::exists(F::Configs.m_sMaterialsPath + sName + ".vmt"))
+	const std::filesystem::path tPath = GetMaterialFilePath(sName);
+	if (tPath.empty())
+		return;
+
+	std::error_code tError;
+	if (!std::filesystem::exists(tPath, tError) || tError)
 		return;
 
 	m_bLoaded = false;
@@ -451,10 +587,14 @@ void CMaterials::RemoveMaterial(const char* sName)
 	auto uHash = FNV1A::Hash32(sName);
 	if (m_mMaterials.contains(uHash) && !m_mMaterials[uHash].m_bLocked)
 	{
+		if (!std::filesystem::remove(tPath, tError) || tError)
+		{
+			m_bLoaded = true;
+			return;
+		}
+
 		Remove(m_mMaterials[uHash].m_pMaterial);
 		m_mMaterials.erase(uHash);
-
-		std::filesystem::remove(F::Configs.m_sMaterialsPath + sName + ".vmt");
 
 		auto fRemoveFromVal = [&](std::vector<std::pair<std::string, ChamsMaterial_t>>& val)
 		{
